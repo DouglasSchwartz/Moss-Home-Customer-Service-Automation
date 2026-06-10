@@ -1,0 +1,313 @@
+{
+  "name": "Moss Home - CS Auto-Reply",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": { "item": [{ "mode": "everyMinute" }] },
+        "simple": false,
+        "filters": {
+          "q": "in:inbox -label:cs-auto-processed -from:me"
+        },
+        "options": { "downloadAttachments": false }
+      },
+      "id": "gmail-trigger",
+      "name": "Gmail Trigger (Moss CS Inbox)",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_MOSS_GMAIL_CREDENTIAL_ID",
+          "name": "Moss Home - Gmail (CS Inbox)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $json.id }}",
+        "labelIds": ["REPLACE_LABEL_ID_cs-auto-processed"]
+      },
+      "id": "label-processed",
+      "name": "Label cs-auto-processed (idempotency)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [240, 0],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_MOSS_GMAIL_CREDENTIAL_ID",
+          "name": "Moss Home - Gmail (CS Inbox)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://REPLACE_WITH_VERCEL_APP.vercel.app/api/process-email",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ messageId: $('Gmail Trigger (Moss CS Inbox)').item.json.id, threadId: $('Gmail Trigger (Moss CS Inbox)').item.json.threadId, from: $('Gmail Trigger (Moss CS Inbox)').item.json.from?.value?.[0]?.address ?? $('Gmail Trigger (Moss CS Inbox)').item.json.From, to: $('Gmail Trigger (Moss CS Inbox)').item.json.to?.value?.[0]?.address ?? $('Gmail Trigger (Moss CS Inbox)').item.json.To, subject: $('Gmail Trigger (Moss CS Inbox)').item.json.subject ?? $('Gmail Trigger (Moss CS Inbox)').item.json.Subject, textBody: $('Gmail Trigger (Moss CS Inbox)').item.json.text ?? $('Gmail Trigger (Moss CS Inbox)').item.json.snippet, htmlBody: $('Gmail Trigger (Moss CS Inbox)').item.json.html ?? '' }) }}",
+        "options": {
+          "timeout": 60000,
+          "retry": { "retry": { "maxRetries": 2, "retryInterval": 5000 } }
+        }
+      },
+      "id": "http-brain",
+      "name": "POST /api/process-email (Vercel brain)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 0],
+      "onError": "continueErrorOutput",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_MOSS_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "Moss Home - Process API (HTTP Header Auth)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.reply_mode }}",
+                    "rightValue": "auto_reply",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "auto_reply"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.reply_mode }}",
+                    "rightValue": "human_review",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "human_review"
+            },
+            {
+              "conditions": {
+                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.reply_mode }}",
+                    "rightValue": "draft_only",
+                    "operator": { "type": "string", "operation": "equals" }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "draft_only"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra", "renameFallbackOutput": "ignore" }
+      },
+      "id": "switch-reply-mode",
+      "name": "Route by reply_mode",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [720, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.dryRun }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "false" }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "if-live",
+      "name": "IF live (not dry-run)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [960, -160]
+    },
+    {
+      "parameters": {
+        "operation": "reply",
+        "messageId": "={{ $('Gmail Trigger (Moss CS Inbox)').item.json.id }}",
+        "emailType": "text",
+        "message": "={{ $('POST /api/process-email (Vercel brain)').item.json.reply }}",
+        "options": {}
+      },
+      "id": "gmail-reply",
+      "name": "Gmail Reply (in thread)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1200, -240],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_MOSS_GMAIL_CREDENTIAL_ID",
+          "name": "Moss Home - Gmail (CS Inbox)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger (Moss CS Inbox)').item.json.id }}",
+        "labelIds": ["REPLACE_LABEL_ID_cs-auto-replied"]
+      },
+      "id": "label-auto-replied",
+      "name": "Label cs-auto-replied",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1440, -240],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_MOSS_GMAIL_CREDENTIAL_ID",
+          "name": "Moss Home - Gmail (CS Inbox)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger (Moss CS Inbox)').item.json.id }}",
+        "labelIds": ["REPLACE_LABEL_ID_cs-auto-ready", "REPLACE_LABEL_ID_cs-dry-run"]
+      },
+      "id": "label-auto-ready-dryrun",
+      "name": "Label cs-auto-ready + cs-dry-run",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [1200, -80],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_MOSS_GMAIL_CREDENTIAL_ID",
+          "name": "Moss Home - Gmail (CS Inbox)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger (Moss CS Inbox)').item.json.id }}",
+        "labelIds": ["REPLACE_LABEL_ID_cs-human-review"]
+      },
+      "id": "label-human-review",
+      "name": "Label cs-human-review",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [960, 40],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_MOSS_GMAIL_CREDENTIAL_ID",
+          "name": "Moss Home - Gmail (CS Inbox)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger (Moss CS Inbox)').item.json.id }}",
+        "labelIds": ["REPLACE_LABEL_ID_cs-draft-only"]
+      },
+      "id": "label-draft-only",
+      "name": "Label cs-draft-only",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [960, 200],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_MOSS_GMAIL_CREDENTIAL_ID",
+          "name": "Moss Home - Gmail (CS Inbox)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger (Moss CS Inbox)').item.json.id }}",
+        "labelIds": ["REPLACE_LABEL_ID_cs-ignore"]
+      },
+      "id": "label-ignore",
+      "name": "Label cs-ignore",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [960, 360],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_MOSS_GMAIL_CREDENTIAL_ID",
+          "name": "Moss Home - Gmail (CS Inbox)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "addLabels",
+        "messageId": "={{ $('Gmail Trigger (Moss CS Inbox)').item.json.id }}",
+        "labelIds": ["REPLACE_LABEL_ID_cs-error"]
+      },
+      "id": "label-error",
+      "name": "Label cs-error (API failure)",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [720, 360],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_MOSS_GMAIL_CREDENTIAL_ID",
+          "name": "Moss Home - Gmail (CS Inbox)"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Gmail Trigger (Moss CS Inbox)": {
+      "main": [[{ "node": "Label cs-auto-processed (idempotency)", "type": "main", "index": 0 }]]
+    },
+    "Label cs-auto-processed (idempotency)": {
+      "main": [[{ "node": "POST /api/process-email (Vercel brain)", "type": "main", "index": 0 }]]
+    },
+    "POST /api/process-email (Vercel brain)": {
+      "main": [
+        [{ "node": "Route by reply_mode", "type": "main", "index": 0 }],
+        [{ "node": "Label cs-error (API failure)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Route by reply_mode": {
+      "main": [
+        [{ "node": "IF live (not dry-run)", "type": "main", "index": 0 }],
+        [{ "node": "Label cs-human-review", "type": "main", "index": 0 }],
+        [{ "node": "Label cs-draft-only", "type": "main", "index": 0 }],
+        [{ "node": "Label cs-ignore", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF live (not dry-run)": {
+      "main": [
+        [{ "node": "Gmail Reply (in thread)", "type": "main", "index": 0 }],
+        [{ "node": "Label cs-auto-ready + cs-dry-run", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gmail Reply (in thread)": {
+      "main": [[{ "node": "Label cs-auto-replied", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "templateCredsSetupCompleted": false },
+  "tags": [{ "name": "client:moss-home" }]
+}
