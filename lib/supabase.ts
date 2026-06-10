@@ -30,6 +30,10 @@ export type AuditRecord = {
   error: string | null;
 };
 
+// Prefixed table name: the audit log lives in the shared Expert AI Labs
+// Supabase project, so the Moss table carries a client prefix for isolation.
+const TABLE = "moss_processed_messages";
+
 /** Returns the prior response if this messageId was already processed. */
 export async function findExisting(
   gmailMessageId: string
@@ -38,7 +42,7 @@ export async function findExisting(
   if (!sb) return null;
   try {
     const { data } = await sb
-      .from("processed_messages")
+      .from(TABLE)
       .select("reply_mode, reason")
       .eq("gmail_message_id", gmailMessageId)
       .maybeSingle();
@@ -56,7 +60,7 @@ export async function logAudit(record: AuditRecord): Promise<void> {
     return;
   }
   try {
-    const { error } = await sb.from("processed_messages").insert(record);
+    const { error } = await sb.from(TABLE).insert(record);
     if (error) console.error("Supabase audit insert failed:", error.message);
   } catch (err) {
     console.error("Supabase audit insert threw:", err);
