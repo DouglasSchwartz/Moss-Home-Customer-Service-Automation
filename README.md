@@ -19,7 +19,7 @@ Gmail (support@mosshomeusa.com)
        3. POST /api/process-email  (Bearer PROCESS_API_SECRET)
        4. Route by reply_mode -> labels (+ Gmail reply when live AND auto_reply)
   -> Vercel brain: cleanup -> extract (Claude) -> Smartsheet lookup -> safety gate
-       -> generate (Claude) -> Supabase audit log
+       -> generate (Claude)
 ```
 
 | reply_mode     | Meaning                                            | n8n action                                  |
@@ -38,7 +38,6 @@ Gmail (support@mosshomeusa.com)
    - `ANTHROPIC_API_KEY` — Moss Anthropic account
    - `SMARTSHEET_API_TOKEN` — token "NBN Customer Service Automation"
    - `SMARTSHEET_SHEET_ID` — numeric ID of "MASTER: Open Orders Sheet" (verify below)
-   - `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
    - `PROCESS_API_SECRET` — `openssl rand -hex 32`; same value goes in n8n
    - `DRY_RUN=true` — keep true until dry-run review is complete
 3. Confirm `GET /api/health` returns `{ "status": "ok", "dryRun": true }`.
@@ -55,10 +54,12 @@ The script prints every sheet the token can see, the live column map, a diff aga
 `lib/smartsheet-columns.ts`, and 3 sample rows. It fails loudly if a critical column
 (AMP Order #, Invoice #, ACCOUNT EMAIL, Order Status, Estimated Shipping) is missing.
 
-### 3. Supabase audit table
+### 3. Supabase audit table (optional — skipped for v1)
 
-Run `supabase/migrations/001_processed_messages.sql` in the Supabase SQL editor.
-This table is where the would-be replies are reviewed during dry-run.
+The app runs without Supabase: decisions show up in n8n execution logs, Vercel
+function logs, and Gmail labels. If a durable audit trail or review dashboard is
+ever wanted, create a **dedicated Moss Supabase project** (never Expert AI Labs)
+and run `supabase/migrations/001_processed_messages.sql` there.
 
 ### 4. Gmail labels
 
@@ -82,8 +83,8 @@ No Smartsheet credential exists in n8n by design — the lookup lives in this re
 ### 6. Dry-run review, then go live
 
 1. With `DRY_RUN=true`, let real emails flow for a review period.
-2. Jacq reviews `processed_messages` in Supabase (especially `generated_reply`,
-   `reply_mode`, `reason`) and the Gmail labels.
+2. Jacq reviews the n8n execution log (each run shows the generated reply,
+   `reply_mode`, and `reason`) and the Gmail labels.
 3. Watch for `reason` containing "sync gap" — identifiers that should have matched.
 4. When the WISMO path is proven: set `DRY_RUN=false` in Vercel and redeploy.
    n8n then sends only when `reply_mode === "auto_reply"`.
@@ -104,4 +105,5 @@ npm run dev       # local Next.js
 - A found order is NEVER asked for its order number.
 - Pending Materials / shipped-without-tracking / cancelled / multiple matches / COM /
   quotes / complaints all route to humans in v1.
-- Every decision is logged to Supabase, including failures.
+- Every decision (including failures) is visible in n8n execution logs and
+  Vercel function logs; Supabase audit logging is optional and off in v1.
