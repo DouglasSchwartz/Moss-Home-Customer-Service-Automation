@@ -10,19 +10,109 @@ import {
 } from "../prompts/generate";
 import type { ExtractionResult, LookupResult } from "./types";
 
-const EXTRACT_MODEL = process.env.EXTRACT_MODEL ?? "claude-haiku-4-5";
-const GENERATE_MODEL = process.env.GENERATE_MODEL ?? "claude-sonnet-4-6";
+// ---------------------------------------------------------------------------
+// Provider selection: Anthropic if ANTHROPIC_API_KEY is set, otherwise OpenAI
+// if OPENAI_API_KEY is set. Anthropic wins when both exist.
+// ---------------------------------------------------------------------------
 
-let _client: Anthropic | null = null;
-function client(): Anthropic {
-  if (!_client) {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new Error("Missing required env var: ANTHROPIC_API_KEY");
-    }
-    _client = new Anthropic();
-  }
-  return _client;
+type Provider = "anthropic" | "openai";
+
+function provider(): Provider {
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  if (process.env.OPENAI_API_KEY) return "openai";
+  throw new Error(
+    "Missing AI credentials: set ANTHROPIC_API_KEY or OPENAI_API_KEY"
+  );
 }
+
+const DEFAULT_MODELS: Record<Provider, { extract: string; generate: string }> =
+  {
+    anthropic: { extract: "claude-haiku-4-5", generate: "claude-sonnet-4-6" },
+    openai: { extract: "gpt-5.4-mini", generate: "gpt-5.5" },
+  };
+
+function modelFor(task: "extract" | "generate"): string {
+  const override =
+    task === "extract" ? process.env.EXTRACT_MODEL : process.env.GENERATE_MODEL;
+  return override ?? DEFAULT_MODELS[provider()][task];
+}
+
+let _anthropic: Anthropic | null = null;
+function anthropicClient(): Anthropic {
+  if (!_anthropic) _anthropic = new Anthropic();
+  return _anthropic;
+}
+
+async function callAnthropic(input: {
+  model: string;
+  system: string;
+  user: string;
+  maxTokens: number;
+}): Promise<string> {
+  const res = await anthropicClient().messages.create({
+    model: input.model,
+    max_tokens: input.maxTokens,
+    system: input.system,
+    messages: [{ role: "user", content: input.user }],
+  });
+  return res.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("");
+}
+
+async function callOpenAI(input: {
+  model: string;
+  system: string;
+  user: string;
+  maxTokens: number;
+}): Promise<string> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: input.model,
+      // GPT-5 family: reasoning tokens count against the completion budget,
+      // so give headroom beyond maxTokens and keep reasoning effort low.
+      max_completion_tokens: Math.max(input.maxTokens * 4, 4096),
+      reasoning_effort: "low",
+      messages: [
+        { role: "system", content: input.system },
+        { role: "user", content: input.user },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`OpenAI API ${res.status}: ${body.slice(0, 400)}`);
+  }
+  const data = (await res.json()) as {
+    choices?: { message?: { content?: string | null } }[];
+  };
+  return data.choices?.[0]?.message?.content ?? "";
+}
+
+async function callModel(input: {
+  task: "extract" | "generate";
+  system: string;
+  user: string;
+  maxTokens: number;
+}): Promise<string> {
+  const args = {
+    model: modelFor(input.task),
+    system: input.system,
+    user: input.user,
+    maxTokens: input.maxTokens,
+  };
+  return provider() === "anthropic" ? callAnthropic(args) : callOpenAI(args);
+}
+
+// ---------------------------------------------------------------------------
+// Extraction
+// ---------------------------------------------------------------------------
 
 const intentSchema = z.enum([
   "order_status",
@@ -91,25 +181,15 @@ export async function extract(input: {
 
   let lastError = "";
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await client().messages.create({
-      model: EXTRACT_MODEL,
-      max_tokens: 1024,
+    const text = await callModel({
+      task: "extract",
       system: EXTRACT_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content:
-            attempt === 0
-              ? userMessage
-              : `${userMessage}\n\nYour previous response failed validation: ${lastError}\nReturn ONLY valid JSON matching the required shape.`,
-        },
-      ],
+      maxTokens: 1024,
+      user:
+        attempt === 0
+          ? userMessage
+          : `${userMessage}\n\nYour previous response failed validation: ${lastError}\nReturn ONLY valid JSON matching the required shape.`,
     });
-
-    const text = res.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
 
     try {
       const parsed = extractionSchema.parse(parseJson(text));
@@ -120,6 +200,10 @@ export async function extract(input: {
   }
   throw new Error(`Extraction failed validation after retry: ${lastError}`);
 }
+
+// ---------------------------------------------------------------------------
+// Generation
+// ---------------------------------------------------------------------------
 
 const FORBIDDEN_REPLY_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /scheduled to ship/i, label: 'forbidden phrase "scheduled to ship"' },
@@ -153,26 +237,17 @@ export async function generate(input: {
 
   let lastViolation = "";
   for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await client().messages.create({
-      model: GENERATE_MODEL,
-      max_tokens: 1024,
-      system: GENERATE_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: "user",
-          content:
-            attempt === 0
-              ? userMessage
-              : `${userMessage}\n\nYour previous reply contained ${lastViolation}. Rewrite without it.`,
-        },
-      ],
-    });
-
-    const reply = res.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("")
-      .trim();
+    const reply = (
+      await callModel({
+        task: "generate",
+        system: GENERATE_SYSTEM_PROMPT,
+        maxTokens: 1024,
+        user:
+          attempt === 0
+            ? userMessage
+            : `${userMessage}\n\nYour previous reply contained ${lastViolation}. Rewrite without it.`,
+      })
+    ).trim();
 
     const violation = lintReply(reply);
     if (!violation) return reply;
