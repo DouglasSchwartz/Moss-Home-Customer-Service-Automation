@@ -1,7 +1,33 @@
 import { COLUMN_TITLES, cleanCellValue } from "./smartsheet-columns";
 import type { OrderRow } from "./types";
 
-const API_BASE = "https://api.smartsheet.com/2.0";
+// Env aliases: the Vercel project uses SMARTSHEET_ACCESS_TOKEN /
+// SMARTSHEET_OPEN_ORDERS_SHEET_ID; .env.example documents the short names.
+// Both are accepted so either naming works.
+function apiBase(): string {
+  return process.env.SMARTSHEET_API_BASE_URL ?? "https://api.smartsheet.com/2.0";
+}
+
+export function getSmartsheetToken(): string {
+  const v = process.env.SMARTSHEET_API_TOKEN ?? process.env.SMARTSHEET_ACCESS_TOKEN;
+  if (!v) {
+    throw new Error(
+      "Missing env var: SMARTSHEET_API_TOKEN (or SMARTSHEET_ACCESS_TOKEN)"
+    );
+  }
+  return v;
+}
+
+export function getSmartsheetSheetId(): string {
+  const v =
+    process.env.SMARTSHEET_SHEET_ID ?? process.env.SMARTSHEET_OPEN_ORDERS_SHEET_ID;
+  if (!v) {
+    throw new Error(
+      "Missing env var: SMARTSHEET_SHEET_ID (or SMARTSHEET_OPEN_ORDERS_SHEET_ID)"
+    );
+  }
+  return v;
+}
 
 type SmartsheetColumn = { id: number; title: string };
 type SmartsheetCell = { columnId: number; value?: unknown; displayValue?: string };
@@ -13,15 +39,9 @@ type SmartsheetSheet = {
   rows: SmartsheetRow[];
 };
 
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing required env var: ${name}`);
-  return v;
-}
-
 async function smartsheetGet<T>(path: string): Promise<T> {
-  const token = requireEnv("SMARTSHEET_API_TOKEN");
-  const res = await fetch(`${API_BASE}${path}`, {
+  const token = getSmartsheetToken();
+  const res = await fetch(`${apiBase()}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
     // Order data changes throughout the day; never serve stale.
     cache: "no-store",
@@ -50,7 +70,7 @@ export async function fetchOrderRows(): Promise<{
   rows: OrderRow[];
   columnTitles: string[];
 }> {
-  const sheetId = requireEnv("SMARTSHEET_SHEET_ID");
+  const sheetId = getSmartsheetSheetId();
   const sheet = await smartsheetGet<SmartsheetSheet>(
     `/sheets/${sheetId}?exclude=nonexistentCells`
   );
