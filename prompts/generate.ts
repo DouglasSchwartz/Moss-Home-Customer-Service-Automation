@@ -5,7 +5,7 @@ export const GENERATE_SYSTEM_PROMPT = `You are the Moss Home USA customer servic
 
 HARD RULES — violating any of these is a failure:
 1. Use ONLY the facts provided in the ORDER DATA section. Never invent dates, tracking numbers, policies, discounts, delays, or internal reasons.
-2. NEVER ask for an order number, PO number, or invoice number — a matching order was already found.
+2. When ORDER DATA is present, NEVER ask for an order number, PO number, or invoice number — a matching order was already found.
 3. For ship timing, use the "Estimated Shipping" value EXACTLY as given (e.g. "Early July" stays "Early July"; if it is a date, phrase it as an estimate).
 4. Say "estimated for completion" — NEVER say "scheduled to ship".
    Correct: "Your order is currently estimated for completion in Early July."
@@ -15,10 +15,29 @@ HARD RULES — violating any of these is a failure:
 8. Do not use em dashes anywhere in the reply.
 9. Do not mention Smartsheet, AMP, internal systems, or this automation.
 10. Output ONLY the reply body text. No subject line, no markdown, no commentary.
-11. Sign off exactly as:
+11. If the order has multiple line items, give ONE consolidated answer for the order (they share the same estimate); only list items individually if the customer asked about specific items.
+12. Sign off exactly as:
 
 Best,
 Moss Home Customer Service`;
+
+function describeRow(cells: Record<string, string>): string {
+  const fields: [string, string][] = [
+    ["Item Name", cells[COLUMN_TITLES.itemName] ?? ""],
+    ["Qty", cells[COLUMN_TITLES.qty] ?? ""],
+    ["Order Status", cells[COLUMN_TITLES.orderStatus] ?? ""],
+    ["Estimated Shipping", cells[COLUMN_TITLES.estimatedShipping] ?? ""],
+    [
+      "Tracking",
+      cells[COLUMN_TITLES.tracking] ?? cells[COLUMN_TITLES.trackingNumber] ?? "",
+    ],
+    ["Shipped Date", cells[COLUMN_TITLES.shippedDate] ?? ""],
+  ];
+  return fields
+    .filter(([, v]) => v)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join(" | ");
+}
 
 export function buildGenerateUserMessage(input: {
   fromName: string | null;
@@ -27,20 +46,50 @@ export function buildGenerateUserMessage(input: {
   extraction: ExtractionResult;
   lookup: LookupResult;
   useShippedLanguage: boolean;
+  askForInfo?: boolean;
 }): string {
-  const row = input.lookup.row;
-  const cells = row?.cells ?? {};
+  const header = [
+    `CUSTOMER EMAIL (from ${input.fromName ?? "customer"}):`,
+    `Subject: ${input.subject}`,
+    input.body,
+    ``,
+  ];
+
+  // ---- No-order-found mode: politely ask for an identifier ----
+  if (input.askForInfo || !input.lookup.found) {
+    const given =
+      input.extraction.ampOrderNumber ??
+      input.extraction.poNumber ??
+      input.extraction.invoiceNumber;
+    return [
+      ...header,
+      `ORDER DATA (the only facts you may use):`,
+      `(no matching order was found in the current open orders)`,
+      ``,
+      given
+        ? `MODE: The customer provided the identifier "${given}", but it does not match any current open order. Politely say you could not locate it in the current open orders, ask them to double-check it, and ask for the order number or invoice number from their confirmation so you can pull it up. Do not speculate about why it was not found.`
+        : `MODE: No order number, PO number, or invoice number could be identified. Politely ask the customer to reply with their order number, PO number, or invoice number so you can look up the status. Do not guess or invent any order information.`,
+    ].join("\n");
+  }
+
+  // ---- Order found: build consolidated order data ----
+  const lineItems =
+    input.lookup.rows && input.lookup.rows.length > 0
+      ? input.lookup.rows
+      : input.lookup.row
+        ? [input.lookup.row]
+        : [];
+  const first = lineItems[0]?.cells ?? {};
 
   const orderData: Record<string, string> = {
-    "AMP Order #": cells[COLUMN_TITLES.ampOrderNumber] ?? "",
-    "Customer PO #": cells[COLUMN_TITLES.customerPo] ?? "",
-    "Invoice #": cells[COLUMN_TITLES.invoiceNumber] ?? "",
-    "Item Name": cells[COLUMN_TITLES.itemName] ?? "",
-    "Order Status": cells[COLUMN_TITLES.orderStatus] ?? "",
-    "Estimated Shipping": cells[COLUMN_TITLES.estimatedShipping] ?? "",
+    "AMP Order #": first[COLUMN_TITLES.ampOrderNumber] ?? "",
+    "Customer PO #": first[COLUMN_TITLES.customerPo] ?? "",
+    "Invoice #": first[COLUMN_TITLES.invoiceNumber] ?? "",
+    "Order Status": first[COLUMN_TITLES.orderStatus] ?? "",
+    "Estimated Shipping": first[COLUMN_TITLES.estimatedShipping] ?? "",
     Tracking:
-      cells[COLUMN_TITLES.tracking] ?? cells[COLUMN_TITLES.trackingNumber] ?? "",
-    "Shipped Date": cells[COLUMN_TITLES.shippedDate] ?? "",
+      first[COLUMN_TITLES.tracking] ?? first[COLUMN_TITLES.trackingNumber] ?? "",
+    "Shipped Date": first[COLUMN_TITLES.shippedDate] ?? "",
   };
 
   const dataLines = Object.entries(orderData)
@@ -48,15 +97,24 @@ export function buildGenerateUserMessage(input: {
     .map(([k, v]) => `${k}: ${v}`)
     .join("\n");
 
+  const itemLines =
+    lineItems.length > 1
+      ? [
+          ``,
+          `LINE ITEMS (${lineItems.length} items on this order):`,
+          ...lineItems.map((r, i) => `${i + 1}. ${describeRow(r.cells) || "(no details)"}`),
+        ]
+      : lineItems.length === 1
+        ? [``, `ITEM: ${describeRow(lineItems[0].cells) || "(no details)"}`]
+        : [];
+
   return [
-    `CUSTOMER EMAIL (from ${input.fromName ?? "customer"}):`,
-    `Subject: ${input.subject}`,
-    input.body,
-    ``,
+    ...header,
     `MATCHED VIA: ${input.lookup.matchType} = ${input.lookup.matchedKey}`,
     ``,
     `ORDER DATA (the only facts you may use):`,
     dataLines || "(none)",
+    ...itemLines,
     ``,
     `SECONDARY QUESTIONS TO ADDRESS: ${
       input.extraction.secondaryQuestions.length

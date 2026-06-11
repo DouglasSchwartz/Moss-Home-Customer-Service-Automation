@@ -232,6 +232,7 @@ export async function generate(input: {
   extraction: ExtractionResult;
   lookup: LookupResult;
   useShippedLanguage: boolean;
+  askForInfo?: boolean;
 }): Promise<string> {
   const userMessage = buildGenerateUserMessage(input);
 

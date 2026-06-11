@@ -124,6 +124,7 @@ export async function processEmail(
         extraction,
         lookup,
         useShippedLanguage: decision.useShippedLanguage,
+        askForInfo: decision.askForInfo,
       });
     } catch (err) {
       return {
@@ -147,6 +148,6 @@ export async function processEmail(
     match: matchSummary,
     reply,
     reason: decision.reason,
-    askedForInfo: false, // v1 never asks for identifiers; no-match goes to human review
+    askedForInfo: decision.askForInfo,
   };
 }

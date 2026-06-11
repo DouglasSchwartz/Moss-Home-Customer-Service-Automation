@@ -28,6 +28,26 @@ function findExact(
   });
 }
 
+/**
+ * The Open Orders sheet has ONE ROW PER LINE ITEM, so a single order
+ * (e.g. a 7-piece upholstery order) legitimately spans several rows that all
+ * share the same AMP Order #. Group matched rows by order: rows of the same
+ * order are line items, not ambiguity. Only DISTINCT orders count as
+ * "multiple matches" needing a human.
+ */
+function groupByOrder(matches: OrderRow[]): OrderRow[][] {
+  const ampCol = COLUMN_TITLES.ampOrderNumber;
+  const groups = new Map<string, OrderRow[]>();
+  for (const row of matches) {
+    // Rows without an order number can't be grouped; treat each as its own order.
+    const key = normalizeId(row.cells[ampCol] ?? "") || `row:${row.rowId}`;
+    const list = groups.get(key) ?? [];
+    list.push(row);
+    groups.set(key, list);
+  }
+  return [...groups.values()];
+}
+
 function buildResult(
   matches: OrderRow[],
   matchType: LookupResult["matchType"],
@@ -36,17 +56,21 @@ function buildResult(
   confidence: LookupResult["confidence"]
 ): LookupResult | null {
   if (matches.length === 0) return null;
-  if (matches.length === 1) {
+
+  const orders = groupByOrder(matches);
+  if (orders.length === 1) {
+    const lineItems = orders[0];
     return {
       found: true,
       matchType,
       matchedKey,
       matchedColumn,
-      rowId: matches[0].rowId,
+      rowId: lineItems[0].rowId,
       confidence,
       multipleMatches: false,
-      candidateCount: 1,
-      row: matches[0],
+      candidateCount: lineItems.length,
+      row: lineItems[0],
+      rows: lineItems,
     };
   }
   return {

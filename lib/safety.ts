@@ -7,13 +7,21 @@ import type {
   ReplyMode,
 } from "./types";
 
-/** Intents eligible for auto-reply in v1 (clean WISMO only). */
+/** Intents eligible for auto-reply when an order is found. */
 const AUTO_REPLY_INTENTS: Intent[] = [
   "order_status",
   "tracking_status",
   "estimated_completion",
   "po_status",
   "invoice_status",
+  "client_project_lookup",
+];
+
+/** Intents that may get an automatic "please send your order number" reply
+ *  when no order could be found. */
+const ASK_FOR_INFO_INTENTS: Intent[] = [
+  ...AUTO_REPLY_INTENTS,
+  "general_customer_service",
 ];
 
 /** Intents that always need a human in v1. */
@@ -36,14 +44,15 @@ export type SafetyDecision = {
   reason: string;
   /** True when the generated reply may be sent with shipped/tracking language. */
   useShippedLanguage: boolean;
+  /** True when the reply should ask the customer for an order/invoice number. */
+  askForInfo: boolean;
 };
 
-function getStatus(row: OrderRow | undefined): string {
-  return row?.cells[COLUMN_TITLES.orderStatus] ?? "";
+function getStatus(row: OrderRow): string {
+  return row.cells[COLUMN_TITLES.orderStatus] ?? "";
 }
 
-function getTracking(row: OrderRow | undefined): string {
-  if (!row) return "";
+function getTracking(row: OrderRow): string {
   return (
     row.cells[COLUMN_TITLES.tracking] ??
     row.cells[COLUMN_TITLES.trackingNumber] ??
@@ -51,8 +60,8 @@ function getTracking(row: OrderRow | undefined): string {
   );
 }
 
-function getEstimatedShipping(row: OrderRow | undefined): string {
-  return row?.cells[COLUMN_TITLES.estimatedShipping] ?? "";
+function getEstimatedShipping(row: OrderRow): string {
+  return row.cells[COLUMN_TITLES.estimatedShipping] ?? "";
 }
 
 function anyUnsafe(e: ExtractionResult): string | null {
@@ -67,6 +76,8 @@ function anyUnsafe(e: ExtractionResult): string | null {
   return null;
 }
 
+const HOLD = { useShippedLanguage: false, askForInfo: false };
+
 /**
  * Deterministic reply-mode gate. Runs AFTER extraction and lookup,
  * BEFORE generation. Never left to the model.
@@ -80,7 +91,7 @@ export function decideReplyMode(
     return {
       reply_mode: "ignore",
       reason: "Classified as spam or unrelated to customer service.",
-      useShippedLanguage: false,
+      ...HOLD,
     };
   }
 
@@ -90,7 +101,7 @@ export function decideReplyMode(
     return {
       reply_mode: "human_review",
       reason: `Unsafe signal detected: ${unsafe}.`,
-      useShippedLanguage: false,
+      ...HOLD,
     };
   }
 
@@ -99,111 +110,136 @@ export function decideReplyMode(
     return {
       reply_mode: "human_review",
       reason: `Intent "${extraction.intent}" requires human handling in v1 (no confirmed receipt-status/quote data in sheet).`,
-      useShippedLanguage: false,
+      ...HOLD,
     };
   }
 
-  // Multiple matches: confirm with a human rather than guess
+  // Multiple DISTINCT orders matched: confirm with a human rather than guess.
+  // (Line items of the SAME order are grouped by the matcher and arrive here
+  // as a single match with multiple rows.)
   if (lookup.multipleMatches) {
     return {
       reply_mode: "human_review",
-      reason: `Multiple Smartsheet rows (${lookup.candidateCount}) matched "${lookup.matchedKey}" — needs human disambiguation.`,
-      useShippedLanguage: false,
+      reason: `Multiple distinct orders (${lookup.candidateCount} rows) matched "${lookup.matchedKey}" — needs human disambiguation.`,
+      ...HOLD,
     };
   }
 
-  // No match at all
+  // No match at all: auto-reply asking for an order/invoice number when the
+  // request is a routine lookup. Never goes silent, never invents data.
   if (!lookup.found) {
-    if (lookup.identifierWithoutRow) {
+    if (ASK_FOR_INFO_INTENTS.includes(extraction.intent)) {
       return {
-        reply_mode: "human_review",
-        reason:
-          "Valid-format identifier found but no Smartsheet row matched — possible Data Shuttle sync gap. Do not ask the customer for info they already gave.",
+        reply_mode: "auto_reply",
+        reason: lookup.identifierWithoutRow
+          ? `Identifier "${
+              extraction.ampOrderNumber ?? extraction.poNumber ?? extraction.invoiceNumber
+            }" not found in current open orders — auto-replying to ask the customer to verify it or share an alternate order/invoice number.`
+          : "No order matched — auto-replying to ask for an order, PO, or invoice number.",
         useShippedLanguage: false,
+        askForInfo: true,
       };
     }
     return {
       reply_mode: "human_review",
-      reason: "No identifiers extracted and no row matched.",
-      useShippedLanguage: false,
+      reason: `No order matched and intent "${extraction.intent}" is not a routine lookup — needs a human.`,
+      ...HOLD,
     };
   }
 
-  // Found a row, but via a low-confidence key (client name / email only)
-  const exactKey =
-    lookup.matchType === "amp_order" ||
-    lookup.matchType === "customer_po" ||
-    lookup.matchType === "invoice";
-
-  if (!exactKey || lookup.confidence !== "high") {
-    return {
-      reply_mode: "human_review",
-      reason: `Row matched via ${lookup.matchType} (confidence: ${lookup.confidence}) — only exact AMP/PO/Invoice matches may auto-reply in v1.`,
-      useShippedLanguage: false,
-    };
-  }
-
-  // Exact match — but is the intent in scope for auto-reply?
+  // Exact-key matches are highest trust; single-order name/email matches are
+  // deterministic contains-matches and may also auto-reply.
   if (!AUTO_REPLY_INTENTS.includes(extraction.intent)) {
     return {
       reply_mode: "draft_only",
-      reason: `Exact row match but intent "${extraction.intent}" is outside the v1 auto-reply scope.`,
-      useShippedLanguage: false,
+      reason: `Order matched but intent "${extraction.intent}" is outside the v1 auto-reply scope.`,
+      ...HOLD,
     };
   }
 
-  const row = lookup.row;
-  const status = getStatus(row);
-  const tracking = getTracking(row);
-  const estShipping = getEstimatedShipping(row);
+  // ---- Aggregate across line items (one row per line item in the sheet) ----
+  const lineItems =
+    lookup.rows && lookup.rows.length > 0
+      ? lookup.rows
+      : lookup.row
+        ? [lookup.row]
+        : [];
+
+  const statuses = lineItems.map(getStatus);
+  const trackings = lineItems.map(getTracking).filter(Boolean);
+  const shipEstimates = [
+    ...new Set(lineItems.map(getEstimatedShipping).filter(Boolean)),
+  ];
 
   // Cancelled orders need a human
-  if (CANCELLED_STATUS_RE.test(status)) {
+  if (statuses.some((s) => CANCELLED_STATUS_RE.test(s))) {
     return {
       reply_mode: "human_review",
-      reason: `Order Status is "${status}" — cancelled orders are not auto-replied.`,
-      useShippedLanguage: false,
+      reason: `At least one line item has a cancelled status — cancelled orders are not auto-replied.`,
+      ...HOLD,
     };
   }
 
   // Pending materials: do not present the order as proceeding normally
-  if (PENDING_MATERIALS_RE.test(status)) {
+  const pending = statuses.find((s) => PENDING_MATERIALS_RE.test(s));
+  if (pending) {
     return {
       reply_mode: "human_review",
-      reason: `Order appears to be pending materials ("${status}"), so auto-reply was withheld.`,
-      useShippedLanguage: false,
+      reason: `Order appears to be pending materials ("${pending}"), so auto-reply was withheld.`,
+      ...HOLD,
     };
   }
 
-  // Shipped logic
-  if (tracking) {
+  // Shipped logic: only speak shipped/tracking language when EVERY line item
+  // has tracking. Partial shipments go to a human.
+  if (trackings.length === lineItems.length && trackings.length > 0) {
     return {
       reply_mode: "auto_reply",
-      reason: "Exact match with tracking available — replying with shipped/tracking language.",
+      reason: "All line items have tracking — replying with shipped/tracking language.",
       useShippedLanguage: true,
+      askForInfo: false,
     };
   }
-  if (SHIPPED_STATUS_RE.test(status)) {
+  if (trackings.length > 0) {
     return {
       reply_mode: "human_review",
-      reason: `Order appears shipped/completed ("${status}") but tracking field is missing — not inventing tracking.`,
-      useShippedLanguage: false,
+      reason: `Tracking exists on ${trackings.length}/${lineItems.length} line items — partial shipment needs a human.`,
+      ...HOLD,
+    };
+  }
+  const shippedStatus = statuses.find((s) => SHIPPED_STATUS_RE.test(s));
+  if (shippedStatus) {
+    return {
+      reply_mode: "human_review",
+      reason: `Order appears shipped/completed ("${shippedStatus}") but tracking is missing — not inventing tracking.`,
+      ...HOLD,
     };
   }
 
-  // Normal completion-estimate path requires a usable Estimated Shipping value
-  if (!estShipping) {
+  // Normal completion-estimate path requires ONE usable, consistent
+  // Estimated Shipping value across line items.
+  if (shipEstimates.length === 0) {
     return {
       reply_mode: "human_review",
       reason:
-        "Exact match but Estimated Shipping is empty or invalid (#INVALID DATA TYPE) — nothing safe to tell the customer.",
-      useShippedLanguage: false,
+        "Order matched but Estimated Shipping is empty or invalid on every line item — nothing safe to tell the customer.",
+      ...HOLD,
+    };
+  }
+  if (shipEstimates.length > 1) {
+    return {
+      reply_mode: "human_review",
+      reason: `Line items show different Estimated Shipping values (${shipEstimates.join(", ")}) — needs a human to summarize.`,
+      ...HOLD,
     };
   }
 
   return {
     reply_mode: "auto_reply",
-    reason: `Clean WISMO: exact ${lookup.matchType} match, status "${status || "n/a"}", Estimated Shipping "${estShipping}".`,
+    reason: `Clean WISMO: ${lookup.matchType} match (${lineItems.length} line item${
+      lineItems.length === 1 ? "" : "s"
+    }), status "${statuses[0] || "n/a"}", Estimated Shipping "${shipEstimates[0]}".`,
     useShippedLanguage: false,
+    askForInfo: false,
   };
 }

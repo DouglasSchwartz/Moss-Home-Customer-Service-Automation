@@ -41,6 +41,15 @@ describe("decideReplyMode — v1 safety gate", () => {
     expect(d.useShippedLanguage).toBe(false);
   });
 
+  it("treats multiple rows of the SAME order as line items, not ambiguity", () => {
+    const e = extraction({ ampOrderNumber: "032725-5713" });
+    const l = lookup(e);
+    expect(l.multipleMatches).toBe(false);
+    expect(l.rows?.length).toBe(2);
+    const d = decideReplyMode(e, l);
+    expect(d.reply_mode).toBe("auto_reply");
+  });
+
   it("auto-replies with shipped language when tracking exists", () => {
     const e = extraction({ intent: "tracking_status", ampOrderNumber: "112025-23759" });
     const d = decideReplyMode(e, lookup(e));
@@ -52,7 +61,7 @@ describe("decideReplyMode — v1 safety gate", () => {
     const e = extraction({ intent: "tracking_status", ampOrderNumber: "112525-3604" });
     const d = decideReplyMode(e, lookup(e));
     expect(d.reply_mode).toBe("human_review");
-    expect(d.reason).toMatch(/tracking field is missing/i);
+    expect(d.reason).toMatch(/tracking is missing/i);
   });
 
   it("withholds on Pending Materials status", () => {
@@ -82,11 +91,18 @@ describe("decideReplyMode — v1 safety gate", () => {
     expect(d.reply_mode).toBe("human_review");
   });
 
-  it("routes client-name-only matches to human review (Campe case)", () => {
+  it("auto-replies on a client-name match that resolves to a single clean order", () => {
+    const e = extraction({ intent: "client_project_lookup", clientName: "Cocoon" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("auto_reply");
+  });
+
+  it("still holds client-name matches when the order itself is not clean", () => {
+    // "Las Brisas" resolves to one order, but it's pending materials.
     const e = extraction({ intent: "client_project_lookup", clientName: "Las Brisas" });
     const d = decideReplyMode(e, lookup(e));
     expect(d.reply_mode).toBe("human_review");
-    expect(d.reason).toMatch(/client_project/);
+    expect(d.reason).toMatch(/pending materials/i);
   });
 
   it("routes unsafe signals to human review before anything else", () => {
@@ -115,11 +131,19 @@ describe("decideReplyMode — v1 safety gate", () => {
     expect(d.reason).toMatch(/multiple/i);
   });
 
-  it("routes valid identifier with no row to human review (sync gap), never asks for info", () => {
+  it("auto-replies asking the customer to verify an identifier that matched nothing", () => {
     const e = extraction({ ampOrderNumber: "999999-9999" });
     const d = decideReplyMode(e, lookup(e));
-    expect(d.reply_mode).toBe("human_review");
-    expect(d.reason).toMatch(/sync gap/i);
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.askForInfo).toBe(true);
+    expect(d.reason).toMatch(/not found in current open orders/i);
+  });
+
+  it("auto-replies asking for an order number when nothing was provided", () => {
+    const e = extraction({ clientName: "Nonexistent Client LLC" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.askForInfo).toBe(true);
   });
 
   it("ignores spam", () => {

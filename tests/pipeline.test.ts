@@ -90,14 +90,14 @@ describe("processEmail pipeline", () => {
     expect(res.reply_mode).toBe("auto_reply");
   });
 
-  it("Campe client-name-only -> human_review, never asks for info", async () => {
+  it("Campe client-name with no matching order -> auto_reply asking for order number", async () => {
     mockExtract.mockResolvedValue(
       extraction({ intent: "client_project_lookup", clientName: "Campe" })
     );
     const res = await processEmail(EMAIL_CAMPE);
-    expect(res.reply_mode).toBe("human_review");
-    expect(res.askedForInfo).toBe(false);
-    expect(res.reply).toBeUndefined();
+    expect(res.reply_mode).toBe("auto_reply");
+    expect(res.askedForInfo).toBe(true);
+    expect(res.reply).toBeTruthy();
   });
 
   it("COM received -> human_review even with exact order match", async () => {
