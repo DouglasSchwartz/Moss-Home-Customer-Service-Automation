@@ -22,13 +22,13 @@ const AUTO_REPLY_INTENTS: Intent[] = [
 const ASK_FOR_INFO_INTENTS: Intent[] = [
   ...AUTO_REPLY_INTENTS,
   "general_customer_service",
+  "com_received_status",
 ];
 
 /** Intents that always need a human in v1. */
 const DRAFT_OR_REVIEW_INTENTS: Intent[] = [
   "quote_request",
   "yardage_request",
-  "com_received_status",
   "fabric_status",
   "new_account",
 ];
@@ -46,7 +46,31 @@ export type SafetyDecision = {
   useShippedLanguage: boolean;
   /** True when the reply should ask the customer for an order/invoice number. */
   askForInfo: boolean;
+  /** True when the reply should report per-item COM fabric receipt status. */
+  comMode?: boolean;
 };
+
+/**
+ * Deterministic COM receipt status per line item, derived from the sheet:
+ * a line item with a "Fabric Location" has its fabric checked in; a line item
+ * still in "Pending Materials" does not. Anything else is ambiguous.
+ */
+export function summarizeComStatus(rows: OrderRow[]): {
+  received: OrderRow[];
+  pending: OrderRow[];
+  ambiguous: OrderRow[];
+} {
+  const received: OrderRow[] = [];
+  const pending: OrderRow[] = [];
+  const ambiguous: OrderRow[] = [];
+  for (const row of rows) {
+    const location = row.cells[COLUMN_TITLES.fabricLocation] ?? "";
+    if (location) received.push(row);
+    else if (PENDING_MATERIALS_RE.test(getStatus(row))) pending.push(row);
+    else ambiguous.push(row);
+  }
+  return { received, pending, ambiguous };
+}
 
 function getStatus(row: OrderRow): string {
   return row.cells[COLUMN_TITLES.orderStatus] ?? "";
@@ -147,6 +171,41 @@ export function decideReplyMode(
     };
   }
 
+  // ---- Aggregate across line items (one row per line item in the sheet) ----
+  const lineItems =
+    lookup.rows && lookup.rows.length > 0
+      ? lookup.rows
+      : lookup.row
+        ? [lookup.row]
+        : [];
+
+  // COM receipt questions: answerable deterministically per line item
+  // (Fabric Location set = checked in; Pending Materials = not yet received).
+  if (extraction.intent === "com_received_status") {
+    if (lineItems.some((r) => CANCELLED_STATUS_RE.test(getStatus(r)))) {
+      return {
+        reply_mode: "human_review",
+        reason: "COM question on an order with cancelled line items — needs a human.",
+        ...HOLD,
+      };
+    }
+    const com = summarizeComStatus(lineItems);
+    if (com.ambiguous.length > 0) {
+      return {
+        reply_mode: "human_review",
+        reason: `COM receipt unclear for ${com.ambiguous.length}/${lineItems.length} line items (no Fabric Location and not pending materials) — needs a human.`,
+        ...HOLD,
+      };
+    }
+    return {
+      reply_mode: "auto_reply",
+      reason: `COM status derived from sheet: ${com.received.length} item(s) with fabric received, ${com.pending.length} still awaiting fabric.`,
+      useShippedLanguage: false,
+      askForInfo: false,
+      comMode: true,
+    };
+  }
+
   // Exact-key matches are highest trust; single-order name/email matches are
   // deterministic contains-matches and may also auto-reply.
   if (!AUTO_REPLY_INTENTS.includes(extraction.intent)) {
@@ -156,14 +215,6 @@ export function decideReplyMode(
       ...HOLD,
     };
   }
-
-  // ---- Aggregate across line items (one row per line item in the sheet) ----
-  const lineItems =
-    lookup.rows && lookup.rows.length > 0
-      ? lookup.rows
-      : lookup.row
-        ? [lookup.row]
-        : [];
 
   const statuses = lineItems.map(getStatus);
   const trackings = lineItems.map(getTracking).filter(Boolean);

@@ -100,13 +100,14 @@ describe("processEmail pipeline", () => {
     expect(res.reply).toBeTruthy();
   });
 
-  it("COM received -> human_review even with exact order match", async () => {
+  it("COM received -> auto_reply with per-item fabric status", async () => {
     mockExtract.mockResolvedValue(
       extraction({ intent: "com_received_status", ampOrderNumber: "030926-23631" })
     );
     const res = await processEmail(EMAIL_COM_RECEIVED);
-    expect(res.reply_mode).toBe("human_review");
-    expect(res.match.found).toBe(true); // looked up for audit context
+    expect(res.reply_mode).toBe("auto_reply");
+    expect(res.match.found).toBe(true);
+    expect(res.reply).toBeTruthy();
   });
 
   it("yardage request -> human_review", async () => {

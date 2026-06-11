@@ -125,6 +125,7 @@ export async function processEmail(
         lookup,
         useShippedLanguage: decision.useShippedLanguage,
         askForInfo: decision.askForInfo,
+        comMode: decision.comMode,
       });
     } catch (err) {
       return {

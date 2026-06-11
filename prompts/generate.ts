@@ -1,4 +1,5 @@
 import { COLUMN_TITLES } from "../lib/smartsheet-columns";
+import { summarizeComStatus } from "../lib/safety";
 import type { ExtractionResult, LookupResult } from "../lib/types";
 
 export const GENERATE_SYSTEM_PROMPT = `You are the Moss Home USA customer service assistant writing a reply email. Tone: professional, warm, concise, solution-oriented. The recipients are interior designers and trade reps.
@@ -47,6 +48,7 @@ export function buildGenerateUserMessage(input: {
   lookup: LookupResult;
   useShippedLanguage: boolean;
   askForInfo?: boolean;
+  comMode?: boolean;
 }): string {
   const header = [
     `CUSTOMER EMAIL (from ${input.fromName ?? "customer"}):`,
@@ -80,6 +82,30 @@ export function buildGenerateUserMessage(input: {
         ? [input.lookup.row]
         : [];
   const first = lineItems[0]?.cells ?? {};
+
+  // ---- COM receipt mode: report per-item fabric status ----
+  if (input.comMode) {
+    const com = summarizeComStatus(lineItems);
+    const itemLabel = (r: { cells: Record<string, string> }) => {
+      const name = r.cells[COLUMN_TITLES.itemName] || "Item";
+      const style = r.cells[COLUMN_TITLES.comStyleName];
+      return style ? `${name} (${style})` : name;
+    };
+    return [
+      ...header,
+      `MATCHED VIA: ${input.lookup.matchType} = ${input.lookup.matchedKey}`,
+      ``,
+      `ORDER DATA (the only facts you may use):`,
+      `COM FABRIC RECEIVED for: ${
+        com.received.length ? com.received.map(itemLabel).join("; ") : "(none yet)"
+      }`,
+      `COM FABRIC NOT YET RECEIVED for: ${
+        com.pending.length ? com.pending.map(itemLabel).join("; ") : "(none)"
+      }`,
+      ``,
+      `MODE: The customer is asking whether their COM fabric has been received. Confirm exactly which items have fabric checked in and which are still awaiting fabric, using the lists above. Do not promise ship dates unless the customer asked and an Estimated Shipping value is provided. Do not mention fabric storage locations.`,
+    ].join("\n");
+  }
 
   const orderData: Record<string, string> = {
     "AMP Order #": first[COLUMN_TITLES.ampOrderNumber] ?? "",

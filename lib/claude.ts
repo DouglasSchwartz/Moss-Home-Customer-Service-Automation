@@ -233,6 +233,7 @@ export async function generate(input: {
   lookup: LookupResult;
   useShippedLanguage: boolean;
   askForInfo?: boolean;
+  comMode?: boolean;
 }): Promise<string> {
   const userMessage = buildGenerateUserMessage(input);
 

@@ -85,10 +85,12 @@ describe("decideReplyMode — v1 safety gate", () => {
     expect(d.reason).toMatch(/estimated shipping is empty/i);
   });
 
-  it("routes COM received questions to human review even with exact match", () => {
+  it("auto-replies to COM received questions using Fabric Location / Pending Materials", () => {
     const e = extraction({ intent: "com_received_status", ampOrderNumber: "030926-23631" });
     const d = decideReplyMode(e, lookup(e));
-    expect(d.reply_mode).toBe("human_review");
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.comMode).toBe(true);
+    expect(d.reason).toMatch(/awaiting fabric/i);
   });
 
   it("auto-replies on a client-name match that resolves to a single clean order", () => {
