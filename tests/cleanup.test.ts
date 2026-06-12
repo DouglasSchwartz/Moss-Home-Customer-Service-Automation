@@ -22,6 +22,22 @@ describe("cleanEmailBody", () => {
     expect(c.text).not.toMatch(/tariff/i);
     expect(c.text).toContain("032725-5713");
   });
+
+  it("flags a forward of OUR OWN reply with no new content", () => {
+    const c = cleanEmailBody(
+      "---------- Forwarded message ----------\nFrom: Douglas <douglas@mosshomeusa.com>\n\nHi Marie,\n\nYour order is estimated for completion in Early July.\n\nBest,\nMoss Home Customer Service"
+    );
+    expect(c.containsOwnReply).toBe(true);
+    expect(c.newContent).toBe("");
+  });
+
+  it("keeps a customer's reply that quotes our message but adds new info", () => {
+    const c = cleanEmailBody(
+      "The order number is 032725-5713, thanks!\n\nOn Thu, Jun 12, 2026 at 9:07 AM Douglas wrote:\n> Could you please reply with the order number?\n> Best,\n> Moss Home Customer Service"
+    );
+    expect(c.containsOwnReply).toBe(true);
+    expect(c.newContent).toContain("032725-5713");
+  });
 });
 
 describe("isSkippableSender", () => {

@@ -46,6 +46,8 @@ function extraction(over: Partial<ExtractionResult>): ExtractionResult {
     projectName: null,
     customerEmail: null,
     materialOrComReference: null,
+    senderName: null,
+    senderCompany: null,
     secondaryQuestions: [],
     summary: "",
     unsafeSignals: {
@@ -90,14 +92,26 @@ describe("processEmail pipeline", () => {
     expect(res.reply_mode).toBe("auto_reply");
   });
 
-  it("Campe client-name with no matching order -> auto_reply asking for order number", async () => {
+  it("Campe client-name -> FOUND via the Customer PO # column, auto_reply with status", async () => {
     mockExtract.mockResolvedValue(
       extraction({ intent: "client_project_lookup", clientName: "Campe" })
     );
     const res = await processEmail(EMAIL_CAMPE);
     expect(res.reply_mode).toBe("auto_reply");
-    expect(res.askedForInfo).toBe(true);
+    expect(res.match.found).toBe(true);
+    expect(res.askedForInfo).toBe(false);
     expect(res.reply).toBeTruthy();
+  });
+
+  it("unknown client name -> auto_reply asking for order number", async () => {
+    mockExtract.mockResolvedValue(
+      extraction({ intent: "client_project_lookup", clientName: "Totally Unknown LLC" })
+    );
+    const res = await processEmail(
+      makeRequest({ textBody: "Status on the order for Totally Unknown LLC?" })
+    );
+    expect(res.reply_mode).toBe("auto_reply");
+    expect(res.askedForInfo).toBe(true);
   });
 
   it("COM received -> auto_reply with per-item fabric status", async () => {
@@ -145,6 +159,33 @@ describe("processEmail pipeline", () => {
     );
     expect(res.reply_mode).toBe("ignore");
     expect(mockExtract).not.toHaveBeenCalled();
+  });
+
+  it("ignores a forward of our own reply with no new content (never double-replies)", async () => {
+    const res = await processEmail(
+      makeRequest({
+        from: "douglas@asgardtech.co",
+        subject: "Fwd: Order Status",
+        textBody:
+          "---------- Forwarded message ----------\nFrom: Douglas <douglas@mosshomeusa.com>\n\nHi Marie,\n\nYour order is estimated for completion in Early July.\n\nBest,\nMoss Home Customer Service",
+      })
+    );
+    expect(res.reply_mode).toBe("ignore");
+    expect(res.reason).toMatch(/already answered/i);
+    expect(mockExtract).not.toHaveBeenCalled();
+  });
+
+  it("still processes a customer reply that quotes us but contains the requested info", async () => {
+    mockExtract.mockResolvedValue(extraction({ ampOrderNumber: "032725-5713" }));
+    const res = await processEmail(
+      makeRequest({
+        from: "marie@cocoon-atx.com",
+        subject: "Re: Order Status",
+        textBody:
+          "It's order 032725-5713, thanks!\n\nOn Thu, Jun 12, 2026 at 9:07 AM Moss wrote:\n> Could you reply with the order number?\n> Best,\n> Moss Home Customer Service",
+      })
+    );
+    expect(res.reply_mode).toBe("auto_reply");
   });
 
   it("extraction failure -> human_review with error captured", async () => {

@@ -17,7 +17,9 @@ HARD RULES — violating any of these is a failure:
 9. Do not mention Smartsheet, AMP, internal systems, or this automation.
 10. Output ONLY the reply body text. No subject line, no markdown, no commentary.
 11. If the order has multiple line items, give ONE consolidated answer for the order (they share the same estimate); only list items individually if the customer asked about specific items.
-12. Sign off exactly as:
+12. Greet the sender BY FIRST NAME when SENDER NAME is provided (e.g. "Hi Marie," for Marie Richards). If no name is available, open with "Hello," — never use a company name as a greeting and never guess a name.
+13. Write like a real, helpful person on the Moss Home team: natural and warm, no template-sounding filler like "Thank you for reaching out" in every message, no robotic repetition of the customer's words.
+14. Sign off exactly as:
 
 Best,
 Moss Home Customer Service`;
@@ -51,7 +53,9 @@ export function buildGenerateUserMessage(input: {
   comMode?: boolean;
 }): string {
   const header = [
-    `CUSTOMER EMAIL (from ${input.fromName ?? "customer"}):`,
+    `CUSTOMER EMAIL:`,
+    `SENDER NAME: ${input.extraction.senderName ?? input.fromName ?? "(unknown)"}`,
+    `SENDER COMPANY: ${input.extraction.senderCompany ?? "(unknown)"}`,
     `Subject: ${input.subject}`,
     input.body,
     ``,

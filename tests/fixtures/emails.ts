@@ -104,11 +104,31 @@ export const MOCK_ROWS: OrderRow[] = [
   }),
   // '#PO'-style value living in the AMP Order # column (real pattern from sheet)
   row("r2", {
-    "AMP Order #": "#PO7776",
+    "AMP Order #": "#PO8841",
+    "ACCOUNT EMAIL": "someoneelse@example.com",
+    "Item Name": "Pali Multi Rug Ottoman",
+    "Order Status": "4. Pending Shipment",
+    "Estimated Shipping": "Late August",
+  }),
+  // PO with a sidemark appended by the rep — customer only knows "7776"
+  row("r9", {
+    "AMP Order #": "120325-8810",
+    "Customer PO #": "7776/showroom",
+    Customer: "BOHLERT MASSEY INTERIORS",
     "ACCOUNT EMAIL": "orders@bohlertmassey.com",
     "Item Name": "Pali Multi Rug Ottoman",
     "Order Status": "4. Pending Shipment",
     "Estimated Shipping": "Late August",
+  }),
+  // End-client's name used AS the PO value (the real "Campe" pattern)
+  row("r10", {
+    "AMP Order #": "111225-7401",
+    "Customer PO #": "Campe",
+    Customer: "SOME DESIGN STUDIO",
+    "ACCOUNT EMAIL": "studio@somedesign.com",
+    "Item Name": "Custom Lounge Chair",
+    "Order Status": "3. In Production",
+    "Estimated Shipping": "Mid July",
   }),
   // COM order — pending materials
   row("r3", {

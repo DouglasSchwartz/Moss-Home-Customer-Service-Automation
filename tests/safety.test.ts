@@ -14,6 +14,8 @@ function extraction(over: Partial<ExtractionResult>): ExtractionResult {
     projectName: null,
     customerEmail: null,
     materialOrComReference: null,
+    senderName: null,
+    senderCompany: null,
     secondaryQuestions: [],
     summary: "",
     unsafeSignals: {

@@ -144,6 +144,8 @@ const extractionSchema = z.object({
   projectName: z.string().nullable(),
   customerEmail: z.string().nullable(),
   materialOrComReference: z.string().nullable(),
+  senderName: z.string().nullable().default(null),
+  senderCompany: z.string().nullable().default(null),
   secondaryQuestions: z.array(z.string()).default([]),
   summary: z.string().default(""),
   unsafeSignals: z.object({

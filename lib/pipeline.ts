@@ -54,6 +54,23 @@ export async function processEmail(
 
   const cleaned = cleanEmailBody(req.textBody);
 
+  // Never answer the same question twice: if one of OUR replies is embedded
+  // in this email (a forward or FYI of an answered thread) and the sender
+  // added no new text of their own, stay silent. A customer replying with
+  // requested info (e.g. an order number) HAS new text and proceeds normally.
+  if (cleaned.containsOwnReply && cleaned.newContent.length === 0) {
+    return {
+      ...base,
+      reply_mode: "ignore",
+      intent: "unclear",
+      extracted: null,
+      match: NO_MATCH,
+      reason:
+        "This email contains one of our previous replies with no new message from the sender (forward/FYI) — already answered, not replying again.",
+      askedForInfo: false,
+    };
+  }
+
   // 1. Extract
   let extraction: ExtractionResult;
   try {
@@ -118,7 +135,7 @@ export async function processEmail(
   if (decision.reply_mode === "auto_reply" || decision.reply_mode === "draft_only") {
     try {
       reply = await generate({
-        fromName: null,
+        fromName: extraction.senderName,
         subject: req.subject,
         body: cleaned.text,
         extraction,

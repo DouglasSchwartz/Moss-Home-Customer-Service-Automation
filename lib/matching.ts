@@ -29,6 +29,51 @@ function findExact(
 }
 
 /**
+ * PO cells often carry a sidemark or note appended by the rep, e.g.
+ * "7776/showroom" or "222805 / Campe". Customers only know their bare PO,
+ * so we match on TOKENS: the cell split on separators must contain the
+ * needle as a whole token (so "7776" matches "7776/showroom" but NOT "17776").
+ */
+function poTokens(cell: string): string[] {
+  return normalizeId(cell)
+    .split(/[\/,;|&\-_()]+/)
+    .filter(Boolean);
+}
+
+function findPoToken(
+  rows: OrderRow[],
+  columnTitle: string,
+  needle: string
+): OrderRow[] {
+  const n = normalizeId(needle);
+  if (!n) return [];
+  return rows.filter((row) => {
+    const cell = row.cells[columnTitle];
+    if (cell === undefined) return false;
+    const norm = normalizeId(cell);
+    return norm === n || poTokens(cell).includes(n);
+  });
+}
+
+/**
+ * When a key matches rows across DIFFERENT orders, try narrowing by the
+ * sender's company from their signature against the Customer column
+ * (e.g. "BOHLERT MASSEY INTERIORS" narrows shared PO "7776").
+ */
+function filterByCompany(matches: OrderRow[], company: string | null): OrderRow[] {
+  if (!company || company.trim().length < 3) return matches;
+  if (groupByOrder(matches).length <= 1) return matches;
+  const c = company.toLowerCase().trim();
+  const filtered = matches.filter((row) => {
+    const customer = (row.cells[COLUMN_TITLES.customer] ?? "").toLowerCase();
+    return customer.length > 0 && (customer.includes(c) || c.includes(customer));
+  });
+  // Only use the filter if it actually resolves to a single order.
+  if (filtered.length > 0 && groupByOrder(filtered).length === 1) return filtered;
+  return matches;
+}
+
+/**
  * The Open Orders sheet has ONE ROW PER LINE ITEM, so a single order
  * (e.g. a 7-piece upholstery order) legitimately spans several rows that all
  * share the same AMP Order #. Group matched rows by order: rows of the same
@@ -99,13 +144,15 @@ export function lookupOrder(
   extraction: Pick<
     ExtractionResult,
     "ampOrderNumber" | "poNumber" | "invoiceNumber" | "clientName" | "projectName"
-  >,
+  > &
+    Partial<Pick<ExtractionResult, "senderCompany">>,
   senderEmail: string | null
 ): LookupResult {
   const ampCol = COLUMN_TITLES.ampOrderNumber;
   const invoiceCol = COLUMN_TITLES.invoiceNumber;
   const poCol = COLUMN_TITLES.customerPo;
   const emailCol = COLUMN_TITLES.accountEmail;
+  const company = extraction.senderCompany ?? null;
 
   // 1. AMP Order #
   if (extraction.ampOrderNumber) {
@@ -119,10 +166,11 @@ export function lookupOrder(
     if (r) return r;
   }
 
-  // 2. Customer PO # — dedicated column first, then '#PO...' values in AMP col
+  // 2. Customer PO # — token match in the dedicated column (PO cells often
+  //    carry sidemarks like "7776/showroom"), then '#PO...' values in AMP col
   if (extraction.poNumber) {
     const inPoCol = buildResult(
-      findExact(rows, poCol, extraction.poNumber),
+      filterByCompany(findPoToken(rows, poCol, extraction.poNumber), company),
       "customer_po",
       extraction.poNumber,
       poCol,
@@ -152,14 +200,15 @@ export function lookupOrder(
     if (r) return r;
   }
 
-  // 4. Client / project name — contains-match across candidate text columns.
-  //    LOW confidence by design: v1 routes these to human review. The Zapier
-  //    "Campe" lesson: project names may live in unexpected columns.
+  // 4. Client / project name — contains-match across candidate text columns,
+  //    INCLUDING Customer PO # (reps often put the end-client's name or a
+  //    sidemark in the PO field, e.g. PO "Campe").
   const nameNeedle = (extraction.clientName ?? extraction.projectName ?? "").trim();
   if (nameNeedle.length >= 3) {
     const needle = nameNeedle.toLowerCase();
     const candidateColumns = [
       COLUMN_TITLES.customer,
+      COLUMN_TITLES.customerPo,
       COLUMN_TITLES.itemName,
       COLUMN_TITLES.comMill,
       COLUMN_TITLES.comStyleName,
@@ -170,8 +219,14 @@ export function lookupOrder(
         return v !== undefined && v.toLowerCase().includes(needle);
       })
     );
-    const r = buildResult(matches, "client_project", nameNeedle, "(multiple text columns)", "low");
-    if (r) return { ...r, confidence: r.multipleMatches ? "low" : "low" };
+    const r = buildResult(
+      filterByCompany(matches, company),
+      "client_project",
+      nameNeedle,
+      "(multiple text columns)",
+      "low"
+    );
+    if (r) return r;
   }
 
   // 5. Sender email

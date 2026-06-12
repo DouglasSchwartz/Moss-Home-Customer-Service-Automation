@@ -20,11 +20,25 @@ const SIGNATURE_NOISE = [
   /scanned by gmail/i,
 ];
 
+/** Markers that begin quoted/previous-message content in replies. */
+const REPLY_QUOTE_MARKERS = [
+  /^On .{5,120} wrote:\s*$/m,
+  /^On .{5,120} wrote:/m,
+  /^-{2,}\s*Original Message\s*-{2,}$/im,
+];
+
+/** Signature line the automation signs every outbound reply with. */
+export const OWN_REPLY_SIGNATURE = /Moss Home Customer Service/i;
+
 export type CleanedEmail = {
   text: string;
   isForwarded: boolean;
   /** Email address of the original sender inside the forward, if detectable. */
   embeddedSender: string | null;
+  /** Text the sender actually wrote ABOVE any forward/quote markers. */
+  newContent: string;
+  /** True when one of OUR previous replies is embedded in this email. */
+  containsOwnReply: boolean;
 };
 
 export function cleanEmailBody(raw: string): CleanedEmail {
@@ -32,6 +46,20 @@ export function cleanEmailBody(raw: string): CleanedEmail {
 
   const isForwarded =
     FORWARD_MARKERS.some((re) => re.test(text)) || /^\s*fwd:/i.test(text);
+
+  const containsOwnReply = OWN_REPLY_SIGNATURE.test(text);
+
+  // Text above the first forward/quote marker = what the sender newly wrote.
+  let newContent = text;
+  for (const re of [...FORWARD_MARKERS, ...REPLY_QUOTE_MARKERS]) {
+    const m = newContent.match(re);
+    if (m && m.index !== undefined) newContent = newContent.slice(0, m.index);
+  }
+  newContent = newContent
+    .split("\n")
+    .filter((line) => !line.trim().startsWith(">"))
+    .join("\n")
+    .trim();
 
   // Try to find the original sender inside a forwarded block:
   // "From: Marie Richards <marie@cocoon-atx.com>"
@@ -45,7 +73,7 @@ export function cleanEmailBody(raw: string): CleanedEmail {
   text = text.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
   if (text.length > 8000) text = text.slice(0, 8000);
 
-  return { text, isForwarded, embeddedSender };
+  return { text, isForwarded, embeddedSender, newContent, containsOwnReply };
 }
 
 /** Senders the automation must never reply to (self-protection). */

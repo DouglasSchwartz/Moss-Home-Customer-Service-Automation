@@ -40,11 +40,47 @@ describe("lookupOrder priority", () => {
   });
 
   it("finds PO numbers stored as '#PO...' in the AMP Order # column", () => {
-    const r = lookupOrder(MOCK_ROWS, { ...emptyExtraction, poNumber: "7776" }, null);
+    const r = lookupOrder(MOCK_ROWS, { ...emptyExtraction, poNumber: "8841" }, null);
     expect(r.found).toBe(true);
     expect(r.matchType).toBe("customer_po");
     expect(r.confidence).toBe("high");
     expect(r.row?.rowId).toBe("r2");
+  });
+
+  it("matches a bare PO against a PO cell with a sidemark (7776 -> 7776/showroom)", () => {
+    const r = lookupOrder(MOCK_ROWS, { ...emptyExtraction, poNumber: "7776" }, null);
+    expect(r.found).toBe(true);
+    expect(r.matchType).toBe("customer_po");
+    expect(r.row?.rowId).toBe("r9");
+  });
+
+  it("does NOT token-match a PO against a longer number (777 vs 7776/showroom)", () => {
+    const r = lookupOrder(MOCK_ROWS, { ...emptyExtraction, poNumber: "777" }, null);
+    expect(r.found).toBe(false);
+  });
+
+  it("finds an end-client name stored in the Customer PO # column (Campe)", () => {
+    const r = lookupOrder(MOCK_ROWS, { ...emptyExtraction, clientName: "Campe" }, null);
+    expect(r.found).toBe(true);
+    expect(r.matchType).toBe("client_project");
+    expect(r.row?.rowId).toBe("r10");
+  });
+
+  it("disambiguates shared keys using the sender's company from the signature", () => {
+    // "Pali Multi Rug Ottoman" appears on two different orders (r2 and r9);
+    // the Bohlert Massey signature should narrow it to r9.
+    const r = lookupOrder(
+      MOCK_ROWS,
+      {
+        ...emptyExtraction,
+        clientName: "Pali Multi Rug Ottoman",
+        senderCompany: "BOHLERT MASSEY INTERIORS",
+      },
+      null
+    );
+    expect(r.found).toBe(true);
+    expect(r.multipleMatches).toBe(false);
+    expect(r.row?.rowId).toBe("r9");
   });
 
   it("finds by Customer PO # column", () => {

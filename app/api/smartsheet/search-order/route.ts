@@ -30,6 +30,8 @@ export async function GET(req: NextRequest) {
     projectName: q.get("projectName"),
     customerEmail: q.get("email"),
     materialOrComReference: null,
+    senderName: null,
+    senderCompany: q.get("company"),
     secondaryQuestions: [],
     summary: "manual diagnostic lookup",
     unsafeSignals: {

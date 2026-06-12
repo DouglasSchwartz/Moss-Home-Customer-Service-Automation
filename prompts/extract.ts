@@ -11,6 +11,7 @@ Identifier formats (extract EXACTLY as written, do not invent):
 - Customer PO number: appears near "PO", "PO#", "P.O.", "Customer PO". Examples: "PO# 7776", "Cocoon PO 222805". Extract digits/value only (e.g. "7776", "222805").
 - Invoice number: appears near "invoice", "inv", "invoice #". Often a bare 5-digit number (e.g. 30318). CAUTION: a bare 5-digit number with NO invoice context could be a ZIP code — only set invoiceNumber when context supports it.
 - Client/project name: an end-client or project the order is for (e.g. "Campe", "Las Brisas", "MATIS CREATIVE"). Set clientName for people/companies, projectName for named projects.
+- Sender identity: read the SIGNATURE of the ORIGINAL author (not the forwarder). senderName = the person's name as they sign it (e.g. "Marie Richards" -> senderName "Marie Richards"). senderCompany = their company/showroom from the signature or sign-off (e.g. "BOHLERT MASSEY INTERIORS", "COCOON To the Trade", "CODARUS"). These are used to greet the customer by name and to narrow the order search. Set null when not present.
 
 Intent (pick ONE primary):
 order_status | tracking_status | estimated_completion | com_received_status | fabric_status | po_status | invoice_status | client_project_lookup | quote_request | yardage_request | return_or_refund | cancellation | damage_or_complaint | address_change | new_account | general_customer_service | spam_or_unrelated | unclear
@@ -34,6 +35,8 @@ Return ONLY a JSON object matching this exact shape (no markdown fences, no comm
   "projectName": string | null,
   "customerEmail": string | null,
   "materialOrComReference": string | null,
+  "senderName": string | null,
+  "senderCompany": string | null,
   "secondaryQuestions": string[],
   "summary": "one sentence",
   "unsafeSignals": {

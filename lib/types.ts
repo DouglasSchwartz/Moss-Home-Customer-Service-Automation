@@ -51,6 +51,10 @@ export type ExtractionResult = {
   projectName: string | null;
   customerEmail: string | null;
   materialOrComReference: string | null;
+  /** Person's name from the ORIGINAL author's signature (for greeting). */
+  senderName: string | null;
+  /** Company from the signature — used to disambiguate Smartsheet matches. */
+  senderCompany: string | null;
   secondaryQuestions: string[];
   summary: string;
   unsafeSignals: UnsafeSignals;
