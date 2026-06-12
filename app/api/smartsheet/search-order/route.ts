@@ -21,6 +21,30 @@ export async function GET(req: NextRequest) {
   }
 
   const q = req.nextUrl.searchParams;
+
+  // Raw substring scan across ALL columns: ?scan=7776
+  const scan = q.get("scan");
+  if (scan) {
+    const needle = scan.toLowerCase();
+    const { rows, sheetName } = await fetchOrderRows();
+    const hits = rows
+      .filter((row) =>
+        Object.values(row.cells).some((v) => v.toLowerCase().includes(needle))
+      )
+      .slice(0, 20)
+      .map((row) => ({
+        rowId: row.rowId,
+        matchingCells: Object.fromEntries(
+          Object.entries(row.cells).filter(([, v]) =>
+            v.toLowerCase().includes(needle)
+          )
+        ),
+        ampOrderNumber: row.cells["AMP Order #"] ?? "",
+        customer: row.cells["Customer"] ?? "",
+      }));
+    return NextResponse.json({ sheetName, scan, hitCount: hits.length, hits });
+  }
+
   const extraction: ExtractionResult = {
     intent: "order_status",
     ampOrderNumber: q.get("ampOrderNumber"),
