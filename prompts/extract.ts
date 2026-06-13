@@ -14,13 +14,14 @@ Identifier formats (extract EXACTLY as written, do not invent):
 - Sender identity: read the SIGNATURE of the ORIGINAL author (not the forwarder). senderName = the person's name as they sign it (e.g. "Marie Richards" -> senderName "Marie Richards"). senderCompany = their company/showroom from the signature or sign-off (e.g. "BOHLERT MASSEY INTERIORS", "COCOON To the Trade", "CODARUS"). These are used to greet the customer by name and to narrow the order search. Set null when not present.
 
 Intent (pick ONE primary):
-order_status | tracking_status | estimated_completion | com_received_status | fabric_status | po_status | invoice_status | client_project_lookup | quote_request | yardage_request | return_or_refund | cancellation | damage_or_complaint | address_change | new_account | general_customer_service | spam_or_unrelated | unclear
+order_status | tracking_status | estimated_completion | com_received_status | fabric_status | fabric_stock_inquiry | po_status | invoice_status | client_project_lookup | quote_request | yardage_request | return_or_refund | cancellation | damage_or_complaint | address_change | new_account | general_customer_service | spam_or_unrelated | unclear
 
 Rules:
 - "When will my order ship / what's the timeline / estimated ship date" => order_status or estimated_completion.
 - "Can you provide tracking" => tracking_status.
 - "Did you receive our COM fabric" => com_received_status.
-- Yardage questions ("how many yards", "repeat", "railroaded") => yardage_request.
+- "Do you have [fabric] in stock / available / yardage available" => fabric_stock_inquiry. Fill fabricRequests with EVERY fabric mentioned: [{"fabric": "Avalon Flint", "yards": 12}] — yards null when not stated. Fabric names are usually Pattern + Color (e.g. "Bebe Anthracite"). If they say what piece it's for ("for a sofa", "queen bed"), set furnitureItem to that description.
+- Yardage questions about how much fabric a piece NEEDS ("how many yards", "repeat", "railroaded") => yardage_request.
 - New account forms / onboarding => new_account.
 - Capture EVERY additional question in secondaryQuestions so none get dropped.
 - unsafeSignals: set true ONLY when clearly present in the email.
@@ -37,6 +38,8 @@ Return ONLY a JSON object matching this exact shape (no markdown fences, no comm
   "materialOrComReference": string | null,
   "senderName": string | null,
   "senderCompany": string | null,
+  "fabricRequests": [{"fabric": string, "yards": number | null}],
+  "furnitureItem": string | null,
   "secondaryQuestions": string[],
   "summary": "one sentence",
   "unsafeSignals": {

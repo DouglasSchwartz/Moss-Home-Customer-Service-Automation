@@ -146,6 +146,10 @@ const extractionSchema = z.object({
   materialOrComReference: z.string().nullable(),
   senderName: z.string().nullable().default(null),
   senderCompany: z.string().nullable().default(null),
+  fabricRequests: z
+    .array(z.object({ fabric: z.string(), yards: z.number().nullable() }))
+    .default([]),
+  furnitureItem: z.string().nullable().default(null),
   secondaryQuestions: z.array(z.string()).default([]),
   summary: z.string().default(""),
   unsafeSignals: z.object({
@@ -206,6 +210,45 @@ export async function extract(input: {
 // ---------------------------------------------------------------------------
 // Generation
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Warehouse / mill stock-reply classification
+// ---------------------------------------------------------------------------
+
+const stockReplySchema = z.object({
+  answer: z.enum(["yes", "no", "unclear"]),
+  leadTimeWeeks: z.number().nullable().default(null),
+  leadTimeText: z.string().nullable().default(null),
+  notes: z.string().default(""),
+});
+
+export type StockReplyClassification = z.infer<typeof stockReplySchema>;
+
+const STOCK_REPLY_SYSTEM = `You classify a short email reply about fabric stock availability. The reply answers the question "do you have X yards of this fabric in stock?".
+
+Return ONLY JSON:
+{
+  "answer": "yes" | "no" | "unclear",
+  "leadTimeWeeks": number | null,   // if a lead time is stated, convert to weeks (e.g. "3-4 weeks" -> 4, "30 days" -> 5). Round UP.
+  "leadTimeText": string | null,    // the lead time exactly as written, if any
+  "notes": "one short sentence of anything else important"
+}
+
+"yes" = they confirm the yardage is available / in stock.
+"no" = not available, insufficient, or backordered.
+"unclear" = anything ambiguous, partial, or conditional.`;
+
+export async function classifyStockReply(
+  replyText: string
+): Promise<StockReplyClassification> {
+  const text = await callModel({
+    task: "extract",
+    system: STOCK_REPLY_SYSTEM,
+    maxTokens: 512,
+    user: `REPLY EMAIL:\n${replyText.slice(0, 4000)}`,
+  });
+  return stockReplySchema.parse(parseJson(text));
+}
 
 const FORBIDDEN_REPLY_PATTERNS: { re: RegExp; label: string }[] = [
   { re: /scheduled to ship/i, label: 'forbidden phrase "scheduled to ship"' },

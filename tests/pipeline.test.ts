@@ -28,6 +28,19 @@ vi.mock("../lib/smartsheet", () => ({
     rows: MOCK_ROWS,
     columnTitles: [],
   })),
+  // Multi-sheet lookup: the MASTER sheet gets MOCK_ROWS, every other sheet
+  // (Basics, archives, BarCloud, Fabric Master) is empty unless a test
+  // overrides this mock.
+  fetchSheetRows: vi.fn(async (sheetId: string | number) => {
+    if (String(sheetId) === "6535661298706308") {
+      return {
+        sheetName: "MASTER: Open Orders Sheet",
+        rows: MOCK_ROWS,
+        columnTitles: [],
+      };
+    }
+    return { sheetName: `sheet-${sheetId}`, rows: [], columnTitles: [] };
+  }),
 }));
 
 import { extract, generate } from "../lib/claude";
@@ -48,6 +61,8 @@ function extraction(over: Partial<ExtractionResult>): ExtractionResult {
     materialOrComReference: null,
     senderName: null,
     senderCompany: null,
+    fabricRequests: [],
+    furnitureItem: null,
     secondaryQuestions: [],
     summary: "",
     unsafeSignals: {

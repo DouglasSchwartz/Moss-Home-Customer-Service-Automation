@@ -1,4 +1,6 @@
 import { COLUMN_TITLES } from "./smartsheet-columns";
+import { activeOrderSheets, archiveOrderSheets } from "./sheets-config";
+import { fetchSheetRows } from "./smartsheet";
 import type { ExtractionResult, LookupResult, OrderRow } from "./types";
 
 /** AMP/iPad order format: 032725-5713, 030926-23631, 112025-23759 */
@@ -251,4 +253,55 @@ export function lookupOrder(
     candidateCount: 0,
     identifierWithoutRow: hadStrongIdentifier,
   };
+}
+
+type LookupExtraction = Parameters<typeof lookupOrder>[1];
+
+/**
+ * Search ACTIVE order sheets first (MASTER, then Basics). Only when nothing
+ * matches do we search the ARCHIVE sheets — matches there mean the order has
+ * shipped/closed, which changes what we can safely tell the customer.
+ * A sheet that fails to load is skipped (logged), never fatal.
+ */
+export async function lookupOrderAcrossSheets(
+  extraction: LookupExtraction,
+  senderEmail: string | null
+): Promise<LookupResult> {
+  let firstMiss: LookupResult | null = null;
+
+  for (const group of [activeOrderSheets(), archiveOrderSheets()]) {
+    const fetched = await Promise.all(
+      group.map(async (ref) => {
+        try {
+          const { rows, sheetName } = await fetchSheetRows(ref.id);
+          return { ref, rows, sheetName };
+        } catch (err) {
+          console.error(`Sheet ${ref.label} (${ref.id}) failed to load:`, err);
+          return null;
+        }
+      })
+    );
+
+    for (const item of fetched) {
+      if (!item) continue;
+      const result = lookupOrder(item.rows, extraction, senderEmail);
+      if (result.found) {
+        return {
+          ...result,
+          fromSheet: item.sheetName,
+          isArchive: item.ref.isArchive,
+        };
+      }
+      if (!firstMiss) firstMiss = result;
+    }
+  }
+
+  return (
+    firstMiss ?? {
+      found: false,
+      confidence: "none",
+      multipleMatches: false,
+      candidateCount: 0,
+    }
+  );
 }

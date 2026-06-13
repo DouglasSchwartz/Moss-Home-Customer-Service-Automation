@@ -18,6 +18,9 @@ export type Intent =
   | "estimated_completion"
   | "com_received_status"
   | "fabric_status"
+  | "fabric_stock_inquiry"
+  | "internal_stock_reply"
+  | "mill_stock_reply"
   | "po_status"
   | "invoice_status"
   | "client_project_lookup"
@@ -42,6 +45,12 @@ export type UnsafeSignals = {
   angryOrEscalated: boolean;
 };
 
+/** One fabric the customer asked about, with yardage if they gave one. */
+export type FabricRequest = {
+  fabric: string;
+  yards: number | null;
+};
+
 export type ExtractionResult = {
   intent: Intent;
   ampOrderNumber: string | null;
@@ -55,6 +64,10 @@ export type ExtractionResult = {
   senderName: string | null;
   /** Company from the signature — used to disambiguate Smartsheet matches. */
   senderCompany: string | null;
+  /** Fabrics the customer asked about (stock/availability questions). */
+  fabricRequests: FabricRequest[];
+  /** Furniture piece the fabric is for, mapped to the yardage chart. */
+  furnitureItem: string | null;
   secondaryQuestions: string[];
   summary: string;
   unsafeSignals: UnsafeSignals;
@@ -86,12 +99,24 @@ export type LookupResult = {
   candidateCount?: number;
   row?: OrderRow;
   rows?: OrderRow[];
+  /** Sheet the match came from (MASTER, Basics, or an archive). */
+  fromSheet?: string;
+  /** True when matched on an ARCHIVE sheet — the order shipped/closed. */
+  isArchive?: boolean;
   /** True when an identifier with a valid format was extracted but no row matched —
    *  signals a possible Data Shuttle sync gap, not a customer mistake. */
   identifierWithoutRow?: boolean;
 };
 
 export type ReplyMode = "auto_reply" | "draft_only" | "human_review" | "ignore";
+
+/** A brand-new email (not a reply) the workflow must send, e.g. to the
+ *  warehouse or a mill during a fabric stock inquiry. */
+export type OutboundEmail = {
+  to: string;
+  subject: string;
+  body: string;
+};
 
 export type ProcessEmailResponse = {
   messageId: string;
@@ -110,6 +135,11 @@ export type ProcessEmailResponse = {
     candidateCount?: number;
   };
   reply?: string;
+  /** When set, the reply goes to THIS message/thread instead of the incoming
+   *  one (e.g. relaying a warehouse/mill answer back to the customer). */
+  replyToMessageId?: string;
+  /** New email(s) to send (warehouse / mill inquiries). */
+  outboundEmails?: OutboundEmail[];
   reason: string;
   askedForInfo: boolean;
   dryRun: boolean;

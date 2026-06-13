@@ -4,9 +4,9 @@ import {
   extractEmailAddress,
   isSkippableSender,
 } from "./email-cleanup";
-import { lookupOrder } from "./matching";
+import { handleFabricInquiry, handleStockReply } from "./fabric-pipeline";
+import { lookupOrderAcrossSheets } from "./matching";
 import { decideReplyMode } from "./safety";
-import { fetchOrderRows } from "./smartsheet";
 import type {
   ExtractionResult,
   LookupResult,
@@ -52,6 +52,12 @@ export async function processEmail(
     };
   }
 
+  // Warehouse (Jose) or mill replying to one of our stock inquiries?
+  // Identified by the [MOSS-REF ...] tag quoted in their reply. Runs BEFORE
+  // everything else — these are operational emails, not customer emails.
+  const stockReply = await handleStockReply(base, req.textBody);
+  if (stockReply) return stockReply;
+
   const cleaned = cleanEmailBody(req.textBody);
 
   // Never answer the same question twice: if one of OUR replies is embedded
@@ -93,7 +99,27 @@ export async function processEmail(
     };
   }
 
+  // Fabric stock / availability inquiries take their own path (BarCloud,
+  // warehouse, mill) — no order lookup involved.
+  if (extraction.intent === "fabric_stock_inquiry") {
+    try {
+      return await handleFabricInquiry(base, extraction);
+    } catch (err) {
+      return {
+        ...base,
+        reply_mode: "human_review",
+        intent: extraction.intent,
+        extracted: extraction,
+        match: NO_MATCH,
+        reason: "Fabric stock flow failed — routing to human review.",
+        askedForInfo: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
   // 2. Lookup — prefer the embedded original sender for forwarded emails.
+  // Searches MASTER + Basics first, then the archive sheets.
   const senderEmail =
     extraction.customerEmail ??
     cleaned.embeddedSender ??
@@ -101,8 +127,7 @@ export async function processEmail(
 
   let lookup: LookupResult;
   try {
-    const { rows } = await fetchOrderRows();
-    lookup = lookupOrder(rows, extraction, senderEmail);
+    lookup = await lookupOrderAcrossSheets(extraction, senderEmail);
   } catch (err) {
     return {
       ...base,

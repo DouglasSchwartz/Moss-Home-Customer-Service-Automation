@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthorized } from "../../../../lib/auth";
-import { lookupOrder } from "../../../../lib/matching";
+import { lookupOrderAcrossSheets } from "../../../../lib/matching";
 import { decideReplyMode } from "../../../../lib/safety";
 import { fetchOrderRows } from "../../../../lib/smartsheet";
 import type { ExtractionResult } from "../../../../lib/types";
@@ -56,6 +56,8 @@ export async function GET(req: NextRequest) {
     materialOrComReference: null,
     senderName: null,
     senderCompany: q.get("company"),
+    fabricRequests: [],
+    furnitureItem: null,
     secondaryQuestions: [],
     summary: "manual diagnostic lookup",
     unsafeSignals: {
@@ -87,8 +89,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const { rows } = await fetchOrderRows();
-    const lookup = lookupOrder(rows, extraction, extraction.customerEmail);
+    // Same path production uses: MASTER + Basics first, then archives.
+    const lookup = await lookupOrderAcrossSheets(extraction, extraction.customerEmail);
     const decision = decideReplyMode(extraction, lookup);
 
     return NextResponse.json({
@@ -101,6 +103,8 @@ export async function GET(req: NextRequest) {
         multipleMatches: lookup.multipleMatches,
         candidateCount: lookup.candidateCount,
         identifierWithoutRow: lookup.identifierWithoutRow,
+        fromSheet: lookup.fromSheet,
+        isArchive: lookup.isArchive,
       },
       matchedRow: lookup.row ?? null,
       matchedRows: lookup.rows ?? null,

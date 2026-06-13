@@ -16,6 +16,8 @@ function extraction(over: Partial<ExtractionResult>): ExtractionResult {
     materialOrComReference: null,
     senderName: null,
     senderCompany: null,
+    fabricRequests: [],
+    furnitureItem: null,
     secondaryQuestions: [],
     summary: "",
     unsafeSignals: {

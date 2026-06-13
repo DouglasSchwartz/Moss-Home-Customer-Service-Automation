@@ -85,7 +85,12 @@ function getTracking(row: OrderRow): string {
 }
 
 function getEstimatedShipping(row: OrderRow): string {
-  return row.cells[COLUMN_TITLES.estimatedShipping] ?? "";
+  // Archive sheets title this column in all caps.
+  return (
+    row.cells[COLUMN_TITLES.estimatedShipping] ??
+    row.cells["ESTIMATED SHIPPING"] ??
+    ""
+  );
 }
 
 function anyUnsafe(e: ExtractionResult): string | null {
@@ -178,6 +183,25 @@ export function decideReplyMode(
       : lookup.row
         ? [lookup.row]
         : [];
+
+  // Matched on an ARCHIVE sheet: the order shipped/closed. With tracking we
+  // can answer; without it there is nothing safe to say about an old order.
+  if (lookup.isArchive) {
+    const archTracking = lineItems.map(getTracking).filter(Boolean);
+    if (archTracking.length > 0) {
+      return {
+        reply_mode: "auto_reply",
+        reason: `Order found on archive sheet "${lookup.fromSheet}" with tracking — replying with shipped/tracking language.`,
+        useShippedLanguage: true,
+        askForInfo: false,
+      };
+    }
+    return {
+      reply_mode: "human_review",
+      reason: `Order found on archive sheet "${lookup.fromSheet}" (shipped/closed) but no tracking on file — needs a human.`,
+      ...HOLD,
+    };
+  }
 
   // COM receipt questions: answerable deterministically per line item
   // (Fabric Location set = checked in; Pending Materials = not yet received).

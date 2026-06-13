@@ -116,10 +116,12 @@ export function buildGenerateUserMessage(input: {
     "Customer PO #": first[COLUMN_TITLES.customerPo] ?? "",
     "Invoice #": first[COLUMN_TITLES.invoiceNumber] ?? "",
     "Order Status": first[COLUMN_TITLES.orderStatus] ?? "",
-    "Estimated Shipping": first[COLUMN_TITLES.estimatedShipping] ?? "",
+    "Estimated Shipping":
+      first[COLUMN_TITLES.estimatedShipping] ?? first["ESTIMATED SHIPPING"] ?? "",
     Tracking:
       first[COLUMN_TITLES.tracking] ?? first[COLUMN_TITLES.trackingNumber] ?? "",
-    "Shipped Date": first[COLUMN_TITLES.shippedDate] ?? "",
+    "Shipped Date":
+      first[COLUMN_TITLES.shippedDate] ?? first["Actual Ship Date"] ?? "",
   };
 
   const dataLines = Object.entries(orderData)
