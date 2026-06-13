@@ -4,7 +4,11 @@ import {
   COLUMN_TITLES,
   CRITICAL_COLUMNS,
 } from "../../../../lib/smartsheet-columns";
-import { fetchOrderRows, listSheets } from "../../../../lib/smartsheet";
+import {
+  fetchOrderRows,
+  fetchSheetRows,
+  listSheets,
+} from "../../../../lib/smartsheet";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -17,6 +21,25 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   if (!isAuthorized(req)) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // Inspect ANY sheet's columns + sample rows: ?sheetId=123456
+  const inspectId = req.nextUrl.searchParams.get("sheetId");
+  if (inspectId) {
+    try {
+      const { sheetName, rows, columnTitles } = await fetchSheetRows(inspectId);
+      return NextResponse.json({
+        sheetName,
+        rowCount: rows.length,
+        columnTitles,
+        sampleRows: rows.slice(0, 4).map((r) => r.cells),
+      });
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : String(err) },
+        { status: 500 }
+      );
+    }
   }
 
   try {

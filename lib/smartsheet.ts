@@ -62,15 +62,14 @@ export async function listSheets(): Promise<{ id: number; name: string }[]> {
 }
 
 /**
- * Fetch the whole sheet and flatten rows into title->value records.
+ * Fetch any sheet by ID and flatten rows into title->value records.
  * Prefers displayValue (what a human sees, e.g. "Early July") over raw value.
  */
-export async function fetchOrderRows(): Promise<{
+export async function fetchSheetRows(sheetId: string | number): Promise<{
   sheetName: string;
   rows: OrderRow[];
   columnTitles: string[];
 }> {
-  const sheetId = getSmartsheetSheetId();
   const sheet = await smartsheetGet<SmartsheetSheet>(
     `/sheets/${sheetId}?exclude=nonexistentCells`
   );
@@ -94,6 +93,15 @@ export async function fetchOrderRows(): Promise<{
     rows,
     columnTitles: sheet.columns.map((c) => c.title),
   };
+}
+
+/** Fetch the primary MASTER: Open Orders sheet. */
+export async function fetchOrderRows(): Promise<{
+  sheetName: string;
+  rows: OrderRow[];
+  columnTitles: string[];
+}> {
+  return fetchSheetRows(getSmartsheetSheetId());
 }
 
 /** Convenience accessor: read a cell by our canonical column key. */
