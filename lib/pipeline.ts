@@ -99,6 +99,18 @@ export async function processEmail(
     };
   }
 
+  // Misclassification guard: a "fabric_status" email naming fabrics but NO
+  // order identifier is really a stock/availability question.
+  if (
+    extraction.intent === "fabric_status" &&
+    extraction.fabricRequests.length > 0 &&
+    !extraction.ampOrderNumber &&
+    !extraction.poNumber &&
+    !extraction.invoiceNumber
+  ) {
+    extraction = { ...extraction, intent: "fabric_stock_inquiry" };
+  }
+
   // Fabric stock / availability inquiries take their own path (BarCloud,
   // warehouse, mill) — no order lookup involved.
   if (extraction.intent === "fabric_stock_inquiry") {

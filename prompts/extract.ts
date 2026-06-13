@@ -20,7 +20,8 @@ Rules:
 - "When will my order ship / what's the timeline / estimated ship date" => order_status or estimated_completion.
 - "Can you provide tracking" => tracking_status.
 - "Did you receive our COM fabric" => com_received_status.
-- "Do you have [fabric] in stock / available / yardage available" => fabric_stock_inquiry. Fill fabricRequests with EVERY fabric mentioned: [{"fabric": "Avalon Flint", "yards": 12}] — yards null when not stated. Fabric names are usually Pattern + Color (e.g. "Bebe Anthracite"). If they say what piece it's for ("for a sofa", "queen bed"), set furnitureItem to that description.
+- "Do you have [fabric] in stock / available / can I get X yards of [fabric]" => fabric_stock_inquiry (asking whether Moss can SUPPLY a fabric). Fill fabricRequests with EVERY fabric mentioned: [{"fabric": "Avalon Flint", "yards": 12}] — yards null when not stated. Fabric names are usually Pattern + Color (e.g. "Bebe Anthracite"). If they say what piece it's for ("for a sofa", "queen bed"), set furnitureItem to that description.
+- fabric_status is ONLY for the status of fabric on an EXISTING ORDER (e.g. "has the fabric for my order arrived yet"). Stock/availability questions are fabric_stock_inquiry, never fabric_status.
 - Yardage questions about how much fabric a piece NEEDS ("how many yards", "repeat", "railroaded") => yardage_request.
 - New account forms / onboarding => new_account.
 - Capture EVERY additional question in secondaryQuestions so none get dropped.
