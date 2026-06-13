@@ -111,6 +111,38 @@ export function buildGenerateUserMessage(input: {
     ].join("\n");
   }
 
+  // ---- Multiple shipped orders for the same customer (e.g. PO token hit
+  //      "7776/MJT" and "7776/SHOWROOM"): list every order with its tracking.
+  if (input.lookup.multipleMatches && input.useShippedLanguage) {
+    const byOrder = new Map<string, typeof lineItems>();
+    for (const r of lineItems) {
+      const key = r.cells[COLUMN_TITLES.ampOrderNumber] ?? r.rowId;
+      byOrder.set(key, [...(byOrder.get(key) ?? []), r]);
+    }
+    const orderBlocks = [...byOrder.entries()].map(([amp, rows], i) => {
+      const c = rows[0].cells;
+      const tracking =
+        c[COLUMN_TITLES.tracking] ?? c[COLUMN_TITLES.trackingNumber] ?? "";
+      const po = c[COLUMN_TITLES.customerPo] ?? "";
+      const shipped = c[COLUMN_TITLES.shippedDate] ?? c["Actual Ship Date"] ?? "";
+      const items = rows
+        .map((r) => r.cells[COLUMN_TITLES.itemName])
+        .filter(Boolean)
+        .join(", ");
+      return `${i + 1}. PO: ${po || "(n/a)"} | Items: ${items || "(n/a)"} | Tracking: ${tracking}${shipped ? ` | Shipped: ${shipped}` : ""}`;
+    });
+    return [
+      ...header,
+      `MATCHED VIA: ${input.lookup.matchType} = ${input.lookup.matchedKey}`,
+      ``,
+      `ORDER DATA (the only facts you may use):`,
+      `This customer has ${byOrder.size} SHIPPED orders matching their reference:`,
+      ...orderBlocks,
+      ``,
+      `MODE: All of these orders HAVE SHIPPED. Tell the customer each order shipped and give the tracking number for each, identified by its PO/sidemark. Do not use "estimated for completion".`,
+    ].join("\n");
+  }
+
   const orderData: Record<string, string> = {
     "AMP Order #": first[COLUMN_TITLES.ampOrderNumber] ?? "",
     "Customer PO #": first[COLUMN_TITLES.customerPo] ?? "",

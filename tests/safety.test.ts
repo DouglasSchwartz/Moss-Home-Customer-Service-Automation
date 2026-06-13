@@ -61,6 +61,71 @@ describe("decideReplyMode — v1 safety gate", () => {
     expect(d.useShippedLanguage).toBe(true);
   });
 
+  it("auto-replies when multiple orders match but same customer + all tracked", () => {
+    const e = extraction({ intent: "tracking_status", poNumber: "7776" });
+    const multi = {
+      found: true,
+      matchType: "customer_po" as const,
+      matchedKey: "7776",
+      matchedColumn: "Customer PO #",
+      confidence: "medium" as const,
+      multipleMatches: true,
+      candidateCount: 2,
+      rows: [
+        {
+          rowId: "x1",
+          cells: {
+            "AMP Order #": "021126-3721",
+            "Customer PO #": "7776/MJT",
+            Customer: "BOHLERT MASSEY INTERIORS",
+            "Tracking #": "935697",
+          },
+        },
+        {
+          rowId: "x2",
+          cells: {
+            "AMP Order #": "021126-3722",
+            "Customer PO #": "7776/SHOWROOM",
+            Customer: "BOHLERT MASSEY INTERIORS",
+            "Tracking #": "945518",
+          },
+        },
+      ],
+    };
+    const d = decideReplyMode(e, multi);
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.useShippedLanguage).toBe(true);
+  });
+
+  it("still holds multiple orders when customers differ or tracking missing", () => {
+    const e = extraction({ intent: "tracking_status", poNumber: "7776" });
+    const multi: import("../lib/types").LookupResult = {
+      found: true,
+      matchType: "customer_po" as const,
+      matchedKey: "7776",
+      matchedColumn: "Customer PO #",
+      confidence: "medium" as const,
+      multipleMatches: true,
+      candidateCount: 2,
+      rows: [
+        {
+          rowId: "x1",
+          cells: {
+            "AMP Order #": "021126-3721",
+            Customer: "BOHLERT MASSEY INTERIORS",
+            "Tracking #": "935697",
+          },
+        },
+        {
+          rowId: "x2",
+          cells: { "AMP Order #": "021126-3722", Customer: "OTHER STUDIO" },
+        },
+      ],
+    };
+    const d = decideReplyMode(e, multi);
+    expect(d.reply_mode).toBe("human_review");
+  });
+
   it("withholds when shipped but tracking is missing", () => {
     const e = extraction({ intent: "tracking_status", ampOrderNumber: "112525-3604" });
     const d = decideReplyMode(e, lookup(e));

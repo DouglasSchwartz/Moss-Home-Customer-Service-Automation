@@ -143,10 +143,31 @@ export function decideReplyMode(
     };
   }
 
-  // Multiple DISTINCT orders matched: confirm with a human rather than guess.
-  // (Line items of the SAME order are grouped by the matcher and arrive here
-  // as a single match with multiple rows.)
+  // Multiple DISTINCT orders matched. Exception: when every matched row
+  // belongs to the SAME customer and every row already has tracking (e.g.
+  // PO "7776" hitting both "7776/MJT" and "7776/SHOWROOM" for Bohlert
+  // Massey), it is safe to reply listing each shipped order's tracking.
+  // Anything else goes to a human rather than guessing.
   if (lookup.multipleMatches) {
+    const rows = lookup.rows ?? [];
+    const customers = new Set(
+      rows
+        .map((r) => (r.cells[COLUMN_TITLES.customer] ?? "").toLowerCase().trim())
+        .filter(Boolean)
+    );
+    const allTracked = rows.length > 0 && rows.every((r) => getTracking(r));
+    if (
+      customers.size === 1 &&
+      allTracked &&
+      AUTO_REPLY_INTENTS.includes(extraction.intent)
+    ) {
+      return {
+        reply_mode: "auto_reply",
+        reason: `"${lookup.matchedKey}" matched ${lookup.candidateCount} rows across multiple orders, but all belong to the same customer and all have tracking — replying with each order's tracking.`,
+        useShippedLanguage: true,
+        askForInfo: false,
+      };
+    }
     return {
       reply_mode: "human_review",
       reason: `Multiple distinct orders (${lookup.candidateCount} rows) matched "${lookup.matchedKey}" — needs human disambiguation.`,
