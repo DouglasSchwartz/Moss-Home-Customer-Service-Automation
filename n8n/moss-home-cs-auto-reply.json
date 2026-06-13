@@ -66,7 +66,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer d0d07058229a8101b741b481a94ae98f1d7c9d1d955970b2faec51d1b0c27dba"
+              "value": "Bearer __PROCESS_API_SECRET__"
             }
           ]
         },
