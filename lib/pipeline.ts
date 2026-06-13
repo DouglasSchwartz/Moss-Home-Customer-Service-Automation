@@ -99,14 +99,26 @@ export async function processEmail(
     };
   }
 
-  // Misclassification guard: a "fabric_status" email naming fabrics but NO
-  // order identifier is really a stock/availability question.
+  // Misclassification guard: the model sometimes labels a stock/availability
+  // question as fabric_status / quote_request / yardage_request while still
+  // populating fabricRequests. When the email names fabrics, carries no order
+  // identifier, and reads like an availability question, route it through the
+  // fabric stock flow. Pure pricing quotes (no stock language) are left alone.
+  const STOCK_LANGUAGE_RE =
+    /\b(in stock|stock|available|availability|on hand|do you have|carry|inventory|how many yards|enough)\b/i;
+  const REDIRECTABLE_INTENTS = [
+    "fabric_status",
+    "quote_request",
+    "yardage_request",
+    "general_customer_service",
+  ];
   if (
-    extraction.intent === "fabric_status" &&
+    REDIRECTABLE_INTENTS.includes(extraction.intent) &&
     extraction.fabricRequests.length > 0 &&
     !extraction.ampOrderNumber &&
     !extraction.poNumber &&
-    !extraction.invoiceNumber
+    !extraction.invoiceNumber &&
+    STOCK_LANGUAGE_RE.test(`${req.subject}\n${cleaned.text}`)
   ) {
     extraction = { ...extraction, intent: "fabric_stock_inquiry" };
   }

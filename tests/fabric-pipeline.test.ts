@@ -138,6 +138,35 @@ describe("fabric stock inquiry", () => {
     expect(res.reply).toContain("Hi Marie,");
   });
 
+  it("redirects a stock question misclassified as quote_request", async () => {
+    mockExtract.mockResolvedValue(
+      extraction({
+        intent: "quote_request",
+        fabricRequests: [{ fabric: "Harlow Ivory", yards: 25 }],
+      })
+    );
+    const res = await processEmail(
+      makeRequest({ textBody: "Do you have 25 yards of Harlow Ivory in stock?" })
+    );
+    expect(res.intent).toBe("fabric_stock_inquiry");
+    expect(res.reply_mode).toBe("auto_reply");
+    expect(res.reply).toContain("in stock");
+  });
+
+  it("leaves a genuine pricing quote (no stock language) as quote_request", async () => {
+    mockExtract.mockResolvedValue(
+      extraction({
+        intent: "quote_request",
+        fabricRequests: [{ fabric: "Harlow Ivory", yards: 25 }],
+      })
+    );
+    const res = await processEmail(
+      makeRequest({ textBody: "What is the price per yard for Harlow Ivory?" })
+    );
+    expect(res.intent).toBe("quote_request");
+    expect(res.reply_mode).toBe("human_review");
+  });
+
   it("derives yardage from the furniture item via the chart", async () => {
     mockExtract.mockResolvedValue(
       extraction({
