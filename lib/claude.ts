@@ -120,6 +120,7 @@ const intentSchema = z.enum([
   "estimated_completion",
   "com_received_status",
   "fabric_status",
+  "fabric_stock_inquiry",
   "po_status",
   "invoice_status",
   "client_project_lookup",
@@ -131,6 +132,8 @@ const intentSchema = z.enum([
   "address_change",
   "new_account",
   "general_customer_service",
+  "acknowledgment",
+  "not_customer_service",
   "spam_or_unrelated",
   "unclear",
 ]);
