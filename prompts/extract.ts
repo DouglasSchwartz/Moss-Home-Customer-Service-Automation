@@ -17,6 +17,10 @@ Intent (pick ONE primary):
 order_status | tracking_status | estimated_completion | com_received_status | fabric_status | fabric_stock_inquiry | po_status | invoice_status | client_project_lookup | quote_request | yardage_request | return_or_refund | cancellation | damage_or_complaint | address_change | new_account | general_customer_service | acknowledgment | not_customer_service | spam_or_unrelated | unclear
 
 Rules:
+- FIRST, before anything else, decide if the email even needs the support desk:
+  * If it is ONLY thanks/confirmation/pleasantry with no question ("Awesome, thank you so much!", "Got it", "Sounds good", "Perfect", "Will do") => acknowledgment. Do this even if the thread subject mentions an order.
+  * If it asks for internal/website/marketing/admin work rather than help with a customer's order/product/fabric/sample/delivery ("update the wood descriptions on the website", "edit this page", "post this", "approve this file") => not_customer_service.
+  * Only if neither applies, continue to the order/fabric/etc. intents below.
 - "When will my order ship / what's the timeline / estimated ship date" => order_status or estimated_completion.
 - "Can you provide tracking" => tracking_status.
 - "Did you receive our COM fabric" => com_received_status.
