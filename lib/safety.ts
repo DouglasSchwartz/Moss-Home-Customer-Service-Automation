@@ -18,11 +18,19 @@ const AUTO_REPLY_INTENTS: Intent[] = [
 ];
 
 /** Intents that may get an automatic "please send your order number" reply
- *  when no order could be found. */
+ *  when no order could be found. ONLY genuine order inquiries — never general
+ *  chatter, acknowledgments, or non-CS requests (those would produce robotic
+ *  "send your order number" replies to people who never asked about an order). */
 const ASK_FOR_INFO_INTENTS: Intent[] = [
   ...AUTO_REPLY_INTENTS,
-  "general_customer_service",
   "com_received_status",
+];
+
+/** Intents that never warrant any automated reply — stay silent. */
+const SILENT_INTENTS: Intent[] = [
+  "spam_or_unrelated",
+  "acknowledgment",
+  "not_customer_service",
 ];
 
 /** Intents that always need a human in v1. */
@@ -115,11 +123,13 @@ export function decideReplyMode(
   extraction: ExtractionResult,
   lookup: LookupResult
 ): SafetyDecision {
-  // Spam / unrelated
-  if (extraction.intent === "spam_or_unrelated") {
+  // Spam, acknowledgments ("thanks!"), and non-customer-service requests
+  // (website edits, internal staff tasks) get NO reply — staying silent is
+  // the correct, human behavior here.
+  if (SILENT_INTENTS.includes(extraction.intent)) {
     return {
       reply_mode: "ignore",
-      reason: "Classified as spam or unrelated to customer service.",
+      reason: `Intent "${extraction.intent}" needs no reply (spam, acknowledgment, or not a customer-service request).`,
       ...HOLD,
     };
   }

@@ -14,7 +14,7 @@ Identifier formats (extract EXACTLY as written, do not invent):
 - Sender identity: read the SIGNATURE of the ORIGINAL author (not the forwarder). senderName = the person's name as they sign it (e.g. "Marie Richards" -> senderName "Marie Richards"). senderCompany = their company/showroom from the signature or sign-off (e.g. "BOHLERT MASSEY INTERIORS", "COCOON To the Trade", "CODARUS"). These are used to greet the customer by name and to narrow the order search. Set null when not present.
 
 Intent (pick ONE primary):
-order_status | tracking_status | estimated_completion | com_received_status | fabric_status | fabric_stock_inquiry | po_status | invoice_status | client_project_lookup | quote_request | yardage_request | return_or_refund | cancellation | damage_or_complaint | address_change | new_account | general_customer_service | spam_or_unrelated | unclear
+order_status | tracking_status | estimated_completion | com_received_status | fabric_status | fabric_stock_inquiry | po_status | invoice_status | client_project_lookup | quote_request | yardage_request | return_or_refund | cancellation | damage_or_complaint | address_change | new_account | general_customer_service | acknowledgment | not_customer_service | spam_or_unrelated | unclear
 
 Rules:
 - "When will my order ship / what's the timeline / estimated ship date" => order_status or estimated_completion.
@@ -25,6 +25,9 @@ Rules:
 - "Do you have X yards of [fabric]" / "can I get X yards" / "is [fabric] available" is ALWAYS fabric_stock_inquiry, NOT quote_request. quote_request is only for explicit PRICING requests ("what does X cost", "please quote", "price per yard"). Even when a stock question includes a yardage, it is fabric_stock_inquiry.
 - Yardage questions about how much fabric a piece NEEDS ("how many yards", "repeat", "railroaded") => yardage_request.
 - New account forms / onboarding => new_account.
+- acknowledgment => the message is just a pleasantry, thanks, or confirmation that needs NO reply and asks NO question. Examples: "Awesome, thank you so much!", "Got it, thanks!", "Sounds good", "Perfect, appreciate it". A bare "just checking in" with no order reference and no real question is also an acknowledgment/follow-up — use general_customer_service only if it asks something answerable.
+- not_customer_service => a request that is NOT about a customer's order, product, fabric, sample, or delivery. This is internal/operational/marketing work aimed at a person, not the support desk. Examples: "update these wood descriptions on the website", "can you edit this page", "please post this", "approve this design file", internal staff task requests. These must NOT be answered by the support automation.
+- IMPORTANT: Only use order_status / tracking_status / estimated_completion / po_status / invoice_status / client_project_lookup / com_received_status when the sender is genuinely asking about a SPECIFIC ORDER's status. Do NOT default to these intents just because no order number is present. A vague message with no order question is general_customer_service, acknowledgment, or not_customer_service — never an order intent.
 - Capture EVERY additional question in secondaryQuestions so none get dropped.
 - unsafeSignals: set true ONLY when clearly present in the email.
 

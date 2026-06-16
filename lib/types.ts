@@ -32,6 +32,8 @@ export type Intent =
   | "address_change"
   | "new_account"
   | "general_customer_service"
+  | "acknowledgment"
+  | "not_customer_service"
   | "spam_or_unrelated"
   | "unclear";
 

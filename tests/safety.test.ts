@@ -222,4 +222,24 @@ describe("decideReplyMode — v1 safety gate", () => {
     const d = decideReplyMode(e, lookup(e));
     expect(d.reply_mode).toBe("ignore");
   });
+
+  it("ignores acknowledgments (thank-you / got it) without replying", () => {
+    const e = extraction({ intent: "acknowledgment" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("ignore");
+    expect(d.askForInfo).toBe(false);
+  });
+
+  it("ignores non-customer-service requests (e.g. website edits)", () => {
+    const e = extraction({ intent: "not_customer_service" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("ignore");
+  });
+
+  it("does NOT robo-ask for an order number on general chatter", () => {
+    const e = extraction({ intent: "general_customer_service" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.askForInfo).toBe(false);
+  });
 });
