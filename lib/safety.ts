@@ -101,6 +101,51 @@ function getEstimatedShipping(row: OrderRow): string {
   );
 }
 
+/** Internal raw ship date (e.g. "2025-10-03") paired with the fuzzy
+ *  customer-facing Estimated Shipping ("Early October"). Used only to detect a
+ *  past estimate — never surfaced to the customer. */
+function getEstShipWeek(row: OrderRow): string {
+  return (
+    row.cells[COLUMN_TITLES.estShipWeek] ??
+    row.cells["Est Ship Week"] ??
+    row.cells["EST SHIP DATE WEEK"] ??
+    ""
+  );
+}
+
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+/**
+ * Parse a concrete calendar date from the raw "Est Ship Week" cell
+ * (e.g. "2025-10-03" or "10/3/2025"). This is the qualifier for the
+ * past-estimate check. Returns null when the cell holds no parseable date.
+ */
+export function parseShipDate(estShipWeek: string): Date | null {
+  const wk = (estShipWeek ?? "").trim();
+  if (!wk) return null;
+  let m = wk.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  m = wk.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (m) {
+    let y = +m[3];
+    if (y < 100) y += 2000;
+    return new Date(y, +m[1] - 1, +m[2]);
+  }
+  return null;
+}
+
+/** True when any line item's "Est Ship Week" date is before today. */
+function isEstimateInPast(rows: OrderRow[], now: Date): boolean {
+  const today = startOfDay(now);
+  for (const row of rows) {
+    const d = parseShipDate(getEstShipWeek(row));
+    if (d && d.getTime() < today) return true;
+  }
+  return false;
+}
+
 function anyUnsafe(e: ExtractionResult): string | null {
   const s = e.unsafeSignals;
   if (s.legalOrChargeback) return "legal/chargeback language";
@@ -121,7 +166,8 @@ const HOLD = { useShippedLanguage: false, askForInfo: false };
  */
 export function decideReplyMode(
   extraction: ExtractionResult,
-  lookup: LookupResult
+  lookup: LookupResult,
+  now: Date = new Date()
 ): SafetyDecision {
   // Spam, acknowledgments ("thanks!"), and non-customer-service requests
   // (website edits, internal staff tasks) get NO reply — staying silent is
@@ -336,6 +382,16 @@ export function decideReplyMode(
     return {
       reply_mode: "human_review",
       reason: `Line items show different Estimated Shipping values (${shipEstimates.join(", ")}) — needs a human to summarize.`,
+      ...HOLD,
+    };
+  }
+
+  // Estimated ship date already passed: the estimate is stale, so a human
+  // should double-check before we quote a date that has come and gone.
+  if (isEstimateInPast(lineItems, now)) {
+    return {
+      reply_mode: "human_review",
+      reason: `Estimated ship date appears to be in the past ("${shipEstimates[0]}") — diverting to a human to double-check.`,
       ...HOLD,
     };
   }

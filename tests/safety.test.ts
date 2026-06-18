@@ -54,6 +54,65 @@ describe("decideReplyMode — v1 safety gate", () => {
     expect(d.reply_mode).toBe("auto_reply");
   });
 
+  it("diverts to human when the estimated ship date is in the past", () => {
+    const e = extraction({ ampOrderNumber: "999000-1234" });
+    const l: import("../lib/types").LookupResult = {
+      found: true,
+      matchType: "amp_order",
+      matchedKey: "999000-1234",
+      matchedColumn: "AMP Order #",
+      confidence: "high",
+      multipleMatches: false,
+      candidateCount: 1,
+      rows: [
+        {
+          rowId: "p1",
+          cells: {
+            "AMP Order #": "999000-1234",
+            "Order Status": "2. Ready to Produce",
+            "Estimated Shipping": "Early March",
+            "Est Ship Week": "2026-03-06",
+          },
+        },
+      ],
+    };
+    const d = decideReplyMode(e, l, new Date("2026-06-18"));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.reason).toMatch(/past/i);
+  });
+
+  it("auto-replies when the estimated ship date is in the future", () => {
+    const e = extraction({ ampOrderNumber: "999000-5678" });
+    const l: import("../lib/types").LookupResult = {
+      found: true,
+      matchType: "amp_order",
+      matchedKey: "999000-5678",
+      matchedColumn: "AMP Order #",
+      confidence: "high",
+      multipleMatches: false,
+      candidateCount: 1,
+      rows: [
+        {
+          rowId: "f1",
+          cells: {
+            "AMP Order #": "999000-5678",
+            "Order Status": "2. Ready to Produce",
+            "Estimated Shipping": "Early September",
+            "Est Ship Week": "2026-09-04",
+          },
+        },
+      ],
+    };
+    const d = decideReplyMode(e, l, new Date("2026-06-18"));
+    expect(d.reply_mode).toBe("auto_reply");
+  });
+
+  it("does not divert on yearless fuzzy estimates (cannot prove past)", () => {
+    const e = extraction({ ampOrderNumber: "032725-5713" });
+    const d = decideReplyMode(e, lookup(e), new Date("2030-01-01"));
+    expect(d.reply_mode).toBe("auto_reply");
+  });
+
   it("auto-replies with shipped language when tracking exists", () => {
     const e = extraction({ intent: "tracking_status", ampOrderNumber: "112025-23759" });
     const d = decideReplyMode(e, lookup(e));
