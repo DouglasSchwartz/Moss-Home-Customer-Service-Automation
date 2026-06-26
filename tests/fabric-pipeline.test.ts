@@ -235,7 +235,8 @@ describe("warehouse / mill replies (REF tag)", () => {
     );
     expect(res.reply_mode).toBe("auto_reply");
     expect(res.replyToMessageId).toBe("custmsg1");
-    expect(res.reply).toContain("20 yds of Bebe Anthracite in stock");
+    expect(res.reply).toContain("enough Bebe Anthracite in stock");
+    expect(res.reply).not.toMatch(/\d+\s*yds/);
     expect(mockExtract).not.toHaveBeenCalled();
   });
 

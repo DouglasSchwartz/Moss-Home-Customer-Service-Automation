@@ -97,7 +97,7 @@ export async function handleFabricInquiry(
     const bar = await searchBarcloud(req.fabric, yards);
 
     if (bar.status === "in_stock") {
-      inStock.push(`${bar.matchedPatternColor ?? req.fabric} (${yards} yds)`);
+      inStock.push(bar.matchedPatternColor ?? req.fabric);
       continue;
     }
 
@@ -172,10 +172,12 @@ export async function handleFabricInquiry(
   if (inStock.length > 0 || checking.length > 0) {
     const lines = [greetName ? `Hi ${greetName},` : "Hello,", ``];
     if (inStock.length === 1) {
-      lines.push(`Good news! We do have ${inStock[0]} in stock.`);
+      lines.push(`Good news! We have enough ${inStock[0]} in stock for your project.`);
     } else if (inStock.length > 1) {
       lines.push(
-        `Good news! The following are in stock:\n${inStock.map((f) => `- ${f}`).join("\n")}`
+        `Good news! We have enough of the following in stock for your project:\n${inStock
+          .map((f) => `- ${f}`)
+          .join("\n")}`
       );
     }
     if (checking.length > 0) {
@@ -268,7 +270,7 @@ export async function handleStockReply(
       reply: [
         `Hello,`,
         ``,
-        `Good news! We do have ${tag.yards} yds of ${tag.fabric} in stock.`,
+        `Good news! We have enough ${tag.fabric} in stock for your project.`,
         ``,
         `Best,`,
         `Moss Home Customer Service`,
@@ -321,7 +323,7 @@ export async function handleStockReply(
       reply: [
         `Hello,`,
         ``,
-        `Good news! ${tag.fabric} is in stock at the mill, so we can get ${tag.yards} yds for your project.`,
+        `Good news! ${tag.fabric} is in stock at the mill, so we can get what you need for your project.`,
         ``,
         `Best,`,
         `Moss Home Customer Service`,
