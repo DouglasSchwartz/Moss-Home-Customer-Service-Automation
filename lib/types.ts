@@ -70,6 +70,9 @@ export type ExtractionResult = {
   fabricRequests: FabricRequest[];
   /** Furniture piece the fabric is for, mapped to the yardage chart. */
   furnitureItem: string | null;
+  /** True when the sender asserts/implies their COM fabric was already sent to
+   *  Moss or should already have been received (drives the COM tracking ask). */
+  comShipmentClaimed: boolean;
   secondaryQuestions: string[];
   summary: string;
   unsafeSignals: UnsafeSignals;

@@ -24,6 +24,7 @@ Rules:
 - "When will my order ship / what's the timeline / estimated ship date" => order_status or estimated_completion.
 - "Can you provide tracking" => tracking_status.
 - "Did you receive our COM fabric" => com_received_status.
+- comShipmentClaimed: set TRUE when the sender asserts or implies their COM fabric was already sent to Moss or should already have been received (e.g. "we sent it last week", "you should have it by now", "that's odd, it shipped Monday", "it was delivered"). Otherwise false.
 - "Do you have [fabric] in stock / available / can I get X yards of [fabric]" => fabric_stock_inquiry (asking whether Moss can SUPPLY a fabric). Fill fabricRequests with EVERY fabric mentioned: [{"fabric": "Avalon Flint", "yards": 12}] — yards null when not stated. Fabric names are usually Pattern + Color (e.g. "Bebe Anthracite"). If they say what piece it's for ("for a sofa", "queen bed"), set furnitureItem to that description.
 - fabric_status is ONLY for the status of fabric on an EXISTING ORDER (e.g. "has the fabric for my order arrived yet"). Stock/availability questions are fabric_stock_inquiry, never fabric_status.
 - "Do you have X yards of [fabric]" / "can I get X yards" / "is [fabric] available" is ALWAYS fabric_stock_inquiry, NOT quote_request. quote_request is only for explicit PRICING requests ("what does X cost", "please quote", "price per yard"). Even when a stock question includes a yardage, it is fabric_stock_inquiry.
@@ -49,6 +50,7 @@ Return ONLY a JSON object matching this exact shape (no markdown fences, no comm
   "senderCompany": string | null,
   "fabricRequests": [{"fabric": string, "yards": number | null}],
   "furnitureItem": string | null,
+  "comShipmentClaimed": boolean,
   "secondaryQuestions": string[],
   "summary": "one sentence",
   "unsafeSignals": {

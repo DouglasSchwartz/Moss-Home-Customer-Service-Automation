@@ -153,6 +153,7 @@ const extractionSchema = z.object({
     .array(z.object({ fabric: z.string(), yards: z.number().nullable() }))
     .default([]),
   furnitureItem: z.string().nullable().default(null),
+  comShipmentClaimed: z.boolean().default(false),
   secondaryQuestions: z.array(z.string()).default([]),
   summary: z.string().default(""),
   unsafeSignals: z.object({

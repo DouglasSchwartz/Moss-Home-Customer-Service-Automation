@@ -1,5 +1,12 @@
 import { extract, generate } from "./claude";
 import {
+  COM_PUSHBACK_RE,
+  buildComTrackingRequest,
+  evaluateComShipmentClaim,
+  greetingFirstName,
+  mentionsCom,
+} from "./com";
+import {
   cleanEmailBody,
   extractEmailAddress,
   isSkippableSender,
@@ -175,6 +182,69 @@ export async function processEmail(
     multipleMatches: lookup.multipleMatches,
     candidateCount: lookup.candidateCount,
   };
+
+  // COM follow-up: the sender is replying to one of our messages in a COM
+  // thread, pushing back that the fabric should already be here, while our
+  // records still show it NOT received. Ask for the COM shipment tracking
+  // number (or hand to a human to trace) instead of repeating "not received".
+  const newText = cleaned.newContent || cleaned.text;
+  const claimsComShipped =
+    cleaned.containsOwnReply &&
+    mentionsCom(req.textBody) &&
+    (extraction.comShipmentClaimed || COM_PUSHBACK_RE.test(newText));
+  if (claimsComShipped && lookup.found) {
+    const lineItems =
+      lookup.rows && lookup.rows.length > 0
+        ? lookup.rows
+        : lookup.row
+          ? [lookup.row]
+          : [];
+    const outcome = evaluateComShipmentClaim({
+      lineItems,
+      newContent: newText,
+      fullText: req.textBody,
+    });
+    if (outcome === "ask_tracking") {
+      return {
+        ...base,
+        reply_mode: "auto_reply",
+        intent: extraction.intent,
+        extracted: extraction,
+        match: matchSummary,
+        reply: buildComTrackingRequest(
+          greetingFirstName(extraction.senderName, req.from)
+        ),
+        reason:
+          "COM not received on file but sender indicates it was sent — asking for the COM shipment tracking number.",
+        askedForInfo: false,
+      };
+    }
+    if (outcome === "human_trace") {
+      return {
+        ...base,
+        reply_mode: "human_review",
+        intent: extraction.intent,
+        extracted: extraction,
+        match: matchSummary,
+        reason:
+          "COM not received on file; sender already gave or was already asked for tracking — needs a human to trace the shipment.",
+        askedForInfo: false,
+      };
+    }
+    if (outcome === "human_unclear") {
+      return {
+        ...base,
+        reply_mode: "human_review",
+        intent: extraction.intent,
+        extracted: extraction,
+        match: matchSummary,
+        reason:
+          "COM receipt status is mixed/unclear/cancelled while the sender disputes it — needs a human.",
+        askedForInfo: false,
+      };
+    }
+    // outcome === null -> fall through to the normal COM/status handling below.
+  }
 
   // 3. Deterministic safety gate
   const decision = decideReplyMode(extraction, lookup);

@@ -63,6 +63,7 @@ function extraction(over: Partial<ExtractionResult>): ExtractionResult {
     senderCompany: null,
     fabricRequests: [],
     furnitureItem: null,
+    comShipmentClaimed: false,
     secondaryQuestions: [],
     summary: "",
     unsafeSignals: {
@@ -137,6 +138,27 @@ describe("processEmail pipeline", () => {
     expect(res.reply_mode).toBe("auto_reply");
     expect(res.match.found).toBe(true);
     expect(res.reply).toBeTruthy();
+  });
+
+  it("COM pushback follow-up -> auto_reply asking for the COM shipment tracking number", async () => {
+    mockExtract.mockResolvedValue(
+      extraction({
+        intent: "com_received_status",
+        ampOrderNumber: "030926-23631",
+        comShipmentClaimed: true,
+      })
+    );
+    const res = await processEmail(
+      makeRequest({
+        from: "Jacq Nguyen <jacq@mosshomeusa.com>",
+        subject: "Re: COM for Las Brisas Project",
+        textBody:
+          "That's odd, you should have received it by now.\n\nOn Thu, Jun 26, 2026 Moss wrote:\n> Hi Jacq, for order 030926-23631 we do not show COM fabric received yet for the Las Brisas Lounge Chairs.\n> Best,\n> Moss Home Customer Service",
+      })
+    );
+    expect(res.reply_mode).toBe("auto_reply");
+    expect(res.reply).toContain("tracking number for your COM fabric shipment");
+    expect(mockGenerate).not.toHaveBeenCalled();
   });
 
   it("yardage request -> human_review", async () => {
