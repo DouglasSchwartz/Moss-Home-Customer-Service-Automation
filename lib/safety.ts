@@ -56,6 +56,9 @@ export type SafetyDecision = {
   askForInfo: boolean;
   /** True when the reply should report per-item COM fabric receipt status. */
   comMode?: boolean;
+  /** True when the order is finishing up (ship week reached + upholstery
+   *  complete) and the reply should use "ready in a few days" language. */
+  readyForPickupSoon?: boolean;
 };
 
 /**
@@ -144,6 +147,45 @@ function isEstimateInPast(rows: OrderRow[], now: Date): boolean {
     if (d && d.getTime() < today) return true;
   }
   return false;
+}
+
+/** The latest parseable "Est Ship Week" date across line items (null if none). */
+function latestShipWeek(rows: OrderRow[]): Date | null {
+  let latest: Date | null = null;
+  for (const row of rows) {
+    const d = parseShipDate(getEstShipWeek(row));
+    if (d && (!latest || d.getTime() > latest.getTime())) latest = d;
+  }
+  return latest;
+}
+
+/**
+ * True when `target` is today or up to `n` BUSINESS days (Mon-Fri) in the
+ * future. Past dates return false (handled separately by isEstimateInPast).
+ */
+function isWithinNextBusinessDays(target: Date, now: Date, n: number): boolean {
+  const start = startOfDay(now);
+  const end = startOfDay(target);
+  if (end < start) return false;
+  let count = 0;
+  const cur = new Date(start);
+  while (cur.getTime() < end) {
+    cur.setDate(cur.getDate() + 1);
+    const day = cur.getDay();
+    if (day !== 0 && day !== 6) count++;
+    if (count > n) return false;
+  }
+  return count <= n;
+}
+
+/** True when every line item has a populated "Upholstery Complete Date". */
+function allUpholsteryComplete(rows: OrderRow[]): boolean {
+  return (
+    rows.length > 0 &&
+    rows.every(
+      (r) => (r.cells[COLUMN_TITLES.upholsteryCompleteDate] ?? "").trim() !== ""
+    )
+  );
 }
 
 function anyUnsafe(e: ExtractionResult): string | null {
@@ -392,6 +434,31 @@ export function decideReplyMode(
     return {
       reply_mode: "human_review",
       reason: `Estimated ship date appears to be in the past ("${shipEstimates[0]}") — diverting to a human to double-check.`,
+      ...HOLD,
+    };
+  }
+
+  // Est Ship Week is imminent (today, or within 5 business days). Before we tell
+  // a customer the estimate still holds, validate against Upholstery Complete
+  // Date: if it is populated on EVERY line item, the order is finishing up and
+  // we can say it will be ready in a few days. If it is missing anywhere, a
+  // human should verify rather than us guessing it is on track.
+  const shipWeekDate = latestShipWeek(lineItems);
+  if (shipWeekDate && isWithinNextBusinessDays(shipWeekDate, now, 5)) {
+    if (allUpholsteryComplete(lineItems)) {
+      return {
+        reply_mode: "auto_reply",
+        reason:
+          "Est Ship Week reached and Upholstery Complete Date populated on all line items — order is finishing up, replying with ready-soon language.",
+        useShippedLanguage: false,
+        askForInfo: false,
+        readyForPickupSoon: true,
+      };
+    }
+    return {
+      reply_mode: "human_review",
+      reason:
+        "Est Ship Week reached but Upholstery Complete Date is not populated on all line items — needs a human to verify before promising a timeframe.",
       ...HOLD,
     };
   }

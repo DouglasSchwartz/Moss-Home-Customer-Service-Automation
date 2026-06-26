@@ -262,6 +262,7 @@ export async function processEmail(
         useShippedLanguage: decision.useShippedLanguage,
         askForInfo: decision.askForInfo,
         comMode: decision.comMode,
+        readyForPickupSoon: decision.readyForPickupSoon,
       });
     } catch (err) {
       return {

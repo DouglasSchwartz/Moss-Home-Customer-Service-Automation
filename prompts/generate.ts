@@ -51,6 +51,7 @@ export function buildGenerateUserMessage(input: {
   useShippedLanguage: boolean;
   askForInfo?: boolean;
   comMode?: boolean;
+  readyForPickupSoon?: boolean;
 }): string {
   const header = [
     `CUSTOMER EMAIL:`,
@@ -108,6 +109,19 @@ export function buildGenerateUserMessage(input: {
       }`,
       ``,
       `MODE: The customer is asking whether their COM fabric has been received. Confirm exactly which items have fabric checked in and which are still awaiting fabric, using the lists above. Do not promise ship dates unless the customer asked and an Estimated Shipping value is provided. Do not mention fabric storage locations.`,
+    ].join("\n");
+  }
+
+  // ---- Ready-soon mode: ship week reached + upholstery complete ----
+  if (input.readyForPickupSoon) {
+    return [
+      ...header,
+      `MATCHED VIA: ${input.lookup.matchType} = ${input.lookup.matchedKey}`,
+      ``,
+      `ORDER DATA (the only facts you may use):`,
+      `The order is finishing up in production and is almost ready.`,
+      ``,
+      `MODE: Tell the customer warmly and briefly that their order is finishing up and should be ready in the next few days. Say this ONCE. Do NOT give a specific date, do NOT say "estimated for completion", do NOT quote a month or week, and do NOT repeat the timeframe. Do not mention internal dates, fabric, or systems.`,
     ].join("\n");
   }
 
@@ -188,6 +202,6 @@ export function buildGenerateUserMessage(input: {
     ``,
     input.useShippedLanguage
       ? `MODE: This order HAS SHIPPED. Use shipped/tracking language. Do not use "estimated for completion".`
-      : `MODE: This order is in production. Use the Estimated Shipping value with "estimated for completion" phrasing.`,
+      : `MODE: This order is in production. State the Estimated Shipping timeframe ONCE using "estimated for completion" phrasing (e.g. "Your order is currently estimated for completion in Early July."). Do NOT repeat the timeframe a second time and do NOT echo the customer's own wording back to them.`,
   ].join("\n");
 }

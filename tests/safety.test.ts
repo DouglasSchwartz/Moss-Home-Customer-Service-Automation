@@ -114,6 +114,77 @@ describe("decideReplyMode — v1 safety gate", () => {
     expect(d.reply_mode).toBe("auto_reply");
   });
 
+  function shipWeekLookup(
+    cells: Record<string, string>[]
+  ): import("../lib/types").LookupResult {
+    return {
+      found: true,
+      matchType: "amp_order",
+      matchedKey: "999111-2222",
+      matchedColumn: "AMP Order #",
+      confidence: "high",
+      multipleMatches: false,
+      candidateCount: 1,
+      rows: cells.map((c, i) => ({ rowId: `sw${i}`, cells: c })),
+    };
+  }
+
+  it("ship week imminent + all Upholstery Complete Date populated -> ready-soon auto_reply", () => {
+    const e = extraction({ ampOrderNumber: "999111-2222" });
+    const l = shipWeekLookup([
+      {
+        "AMP Order #": "999111-2222",
+        "Order Status": "3. In Production",
+        "Estimated Shipping": "Late June",
+        "Est Ship Week": "2026-06-24",
+        "Upholstery Complete Date": "2026-06-22",
+      },
+    ]);
+    // now = Mon Jun 22 2026; ship week Wed Jun 24 is 2 business days out
+    const d = decideReplyMode(e, l, new Date("2026-06-22"));
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.readyForPickupSoon).toBe(true);
+  });
+
+  it("ship week imminent but Upholstery Complete Date missing on a line item -> human_review", () => {
+    const e = extraction({ ampOrderNumber: "999111-2222" });
+    const l = shipWeekLookup([
+      {
+        "AMP Order #": "999111-2222",
+        "Order Status": "3. In Production",
+        "Estimated Shipping": "Late June",
+        "Est Ship Week": "2026-06-24",
+        "Upholstery Complete Date": "2026-06-22",
+      },
+      {
+        "AMP Order #": "999111-2222",
+        "Order Status": "3. In Production",
+        "Estimated Shipping": "Late June",
+        "Est Ship Week": "2026-06-24",
+        "Upholstery Complete Date": "",
+      },
+    ]);
+    const d = decideReplyMode(e, l, new Date("2026-06-22"));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.reason).toMatch(/upholstery/i);
+  });
+
+  it("ship week far in the future -> normal estimated-completion auto_reply", () => {
+    const e = extraction({ ampOrderNumber: "999111-2222" });
+    const l = shipWeekLookup([
+      {
+        "AMP Order #": "999111-2222",
+        "Order Status": "3. In Production",
+        "Estimated Shipping": "Late August",
+        "Est Ship Week": "2026-08-31",
+        "Upholstery Complete Date": "",
+      },
+    ]);
+    const d = decideReplyMode(e, l, new Date("2026-06-22"));
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.readyForPickupSoon).toBeFalsy();
+  });
+
   it("auto-replies with shipped language when tracking exists", () => {
     const e = extraction({ intent: "tracking_status", ampOrderNumber: "112025-23759" });
     const d = decideReplyMode(e, lookup(e));

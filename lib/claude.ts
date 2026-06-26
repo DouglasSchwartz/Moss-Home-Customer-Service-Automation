@@ -283,6 +283,7 @@ export async function generate(input: {
   useShippedLanguage: boolean;
   askForInfo?: boolean;
   comMode?: boolean;
+  readyForPickupSoon?: boolean;
 }): Promise<string> {
   const userMessage = buildGenerateUserMessage(input);
 
