@@ -178,8 +178,10 @@ describe("fabric stock inquiry", () => {
     const res = await processEmail(
       makeRequest({ textBody: "Do you have Bebe Anthracite for a queen bed?" })
     );
-    // queen bed = 15 yds; max single lot = 14 -> cumulative 25 -> warehouse check
-    expect(res.reply_mode).toBe("ignore");
+    // queen bed = 15 yds; max single lot = 14 -> cumulative 25 -> warehouse check.
+    // Customer gets a holding reply; warehouse gets the dye-lot inquiry.
+    expect(res.reply_mode).toBe("auto_reply");
+    expect(res.reply).toMatch(/check on/i);
     expect(res.outboundEmails).toHaveLength(1);
     expect(res.outboundEmails![0].to).toBe("josediaz@mosshomeusa.com");
     expect(res.outboundEmails![0].body).toContain("[MOSS-REF warehouse|");
@@ -200,7 +202,9 @@ describe("fabric stock inquiry", () => {
       extraction({ fabricRequests: [{ fabric: "Rare Linen", yards: 10 }] })
     );
     const res = await processEmail(makeRequest({ textBody: "10 yds of Rare Linen?" }));
-    expect(res.reply_mode).toBe("ignore");
+    // Customer gets a holding reply; the mill gets the stock inquiry.
+    expect(res.reply_mode).toBe("auto_reply");
+    expect(res.reply).toMatch(/check on/i);
     expect(res.outboundEmails![0].to).toBe("stock@linomills.example");
     expect(res.outboundEmails![0].body).toContain('"Mill Rare / Lino"');
     expect(res.outboundEmails![0].body).toContain("[MOSS-REF mill|");

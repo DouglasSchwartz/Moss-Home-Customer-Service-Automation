@@ -83,6 +83,8 @@ export async function handleFabricInquiry(
   const notFound: string[] = [];
   const outbound: OutboundEmail[] = [];
   const escalated: string[] = [];
+  /** Fabric names we had to escalate — surfaced in the customer holding reply. */
+  const checking: string[] = [];
 
   for (const req of requests) {
     const { yards } = resolveYards(req.yards, extraction.furnitureItem);
@@ -109,6 +111,7 @@ export async function handleFabricInquiry(
       });
       outbound.push({ to: warehouseContactEmail(), ...mail });
       escalated.push(`${req.fabric}: dye-lot check with warehouse`);
+      checking.push(bar.matchedPatternColor ?? req.fabric);
       continue;
     }
 
@@ -122,6 +125,7 @@ export async function handleFabricInquiry(
       });
       outbound.push({ to: mill.companyEmail, ...mail });
       escalated.push(`${req.fabric}: stock check with mill ${mill.company || mill.companyEmail}`);
+      checking.push(req.fabric);
     } else {
       notFound.push(req.fabric);
     }
@@ -149,7 +153,8 @@ export async function handleFabricInquiry(
   }
 
   // Fabric not in BarCloud and not in the Fabric Master either -> human.
-  if (notFound.length > 0 && inStock.length === 0 && outbound.length === 0) {
+  // (An unknown fabric needs a person, even if other fabrics were actionable.)
+  if (notFound.length > 0) {
     return {
       ...base,
       reply_mode: "human_review",
@@ -161,43 +166,50 @@ export async function handleFabricInquiry(
     };
   }
 
-  // Everything resolvable right now is in stock -> tell the customer.
-  if (outbound.length === 0) {
+  // Build ONE customer reply: confirm what is in stock now, and tell them we're
+  // checking on anything we had to escalate to the warehouse/mill. We NEVER
+  // leave a fabric inquiry on silent — a held reply looks like we ignored them.
+  if (inStock.length > 0 || checking.length > 0) {
+    const lines = [greetName ? `Hi ${greetName},` : "Hello,", ``];
+    if (inStock.length === 1) {
+      lines.push(`Good news! We do have ${inStock[0]} in stock.`);
+    } else if (inStock.length > 1) {
+      lines.push(
+        `Good news! The following are in stock:\n${inStock.map((f) => `- ${f}`).join("\n")}`
+      );
+    }
+    if (checking.length > 0) {
+      const lead = inStock.length > 0 ? "I'm also checking on" : "Let me check on";
+      lines.push(
+        `${lead} ${checking.join(", ")} and I'll get right back to you as soon as I hear back.`
+      );
+    }
+    lines.push(``, `Best,`, `Moss Home Customer Service`);
+
     return {
       ...base,
       reply_mode: "auto_reply",
       intent: extraction.intent,
       extracted: extraction,
       match: NO_MATCH,
-      reply: [
-        greetName ? `Hi ${greetName},` : "Hello,",
-        ``,
-        inStock.length === 1
-          ? `Good news! We do have ${inStock[0]} in stock.`
-          : `Good news! The following fabrics are in stock:\n${inStock.map((f) => `- ${f}`).join("\n")}`,
-        notFound.length > 0
-          ? `\nWe're still looking into: ${notFound.join(", ")} and will follow up.`
-          : ``,
-        ``,
-        `Best,`,
-        `Moss Home Customer Service`,
-      ]
-        .join("\n")
-        .replace(/\n{3,}/g, "\n\n"),
-      reason: `BarCloud shows sufficient single-lot stock: ${inStock.join("; ")}.`,
+      reply: lines.join("\n").replace(/\n{3,}/g, "\n\n"),
+      outboundEmails: outbound.length > 0 ? outbound : undefined,
+      reason:
+        outbound.length > 0
+          ? `Sent ${outbound.length} inquiry email(s): ${escalated.join("; ")}. Customer got a holding acknowledgment.${inStock.length ? ` In stock now: ${inStock.join("; ")}.` : ""}`
+          : `BarCloud shows sufficient single-lot stock: ${inStock.join("; ")}.`,
       askedForInfo: false,
     };
   }
 
-  // Warehouse/mill inquiries pending — hold the customer reply until they answer.
+  // Nothing resolvable at all -> let a human take it.
   return {
     ...base,
-    reply_mode: "ignore",
+    reply_mode: "human_review",
     intent: extraction.intent,
     extracted: extraction,
     match: NO_MATCH,
-    outboundEmails: outbound,
-    reason: `Stock not confirmable from BarCloud alone. Sent ${outbound.length} inquiry email(s): ${escalated.join("; ")}. Customer reply held until answers come back.`,
+    reason: "Fabric inquiry could not be resolved from inventory data — needs a human.",
     askedForInfo: false,
   };
 }
