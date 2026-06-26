@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { isAuthorized } from "../../../lib/auth";
+import { quoteOriginalMessage } from "../../../lib/email-cleanup";
 import { processEmail } from "../../../lib/pipeline";
 import { buildAuditRecord, findExisting, logAudit } from "../../../lib/supabase";
 import type { ProcessEmailResponse } from "../../../lib/types";
@@ -72,6 +73,22 @@ export async function POST(req: NextRequest) {
       dryRun,
       error: err instanceof Error ? err.message : String(err),
     };
+  }
+
+  // Include the conversation history in customer-facing replies (the Gmail
+  // "reply" node threads but doesn't quote). Skip cross-thread relays
+  // (replyToMessageId set) — there the incoming email is an internal
+  // warehouse/mill message, not the customer's, so we must not quote it.
+  if (
+    response.reply &&
+    !response.replyToMessageId &&
+    (response.reply_mode === "auto_reply" || response.reply_mode === "draft_only")
+  ) {
+    response.reply = quoteOriginalMessage(response.reply, {
+      from: body.from,
+      date: body.date,
+      body: body.textBody,
+    });
   }
 
   // Always log, even on failure.

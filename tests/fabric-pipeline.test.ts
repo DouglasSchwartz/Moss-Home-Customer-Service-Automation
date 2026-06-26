@@ -180,7 +180,7 @@ describe("fabric stock inquiry", () => {
     // queen bed = 15 yds; max single lot = 14 -> cumulative 25 -> warehouse check
     expect(res.reply_mode).toBe("ignore");
     expect(res.outboundEmails).toHaveLength(1);
-    expect(res.outboundEmails![0].to).toBe("Jose@mosshomeusa.com");
+    expect(res.outboundEmails![0].to).toBe("josediaz@mosshomeusa.com");
     expect(res.outboundEmails![0].body).toContain("[MOSS-REF warehouse|");
   });
 

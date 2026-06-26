@@ -3,6 +3,7 @@ import {
   cleanEmailBody,
   extractEmailAddress,
   isSkippableSender,
+  quoteOriginalMessage,
 } from "../lib/email-cleanup";
 import { lintReply } from "../lib/claude";
 import { EMAIL_FORWARDED_WISMO } from "./fixtures/emails";

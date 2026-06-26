@@ -68,7 +68,7 @@ export function fabricMasterSheetId(): string {
 
 /** Warehouse contact for dye-lot confirmation. */
 export function warehouseContactEmail(): string {
-  return env("FABRIC_WAREHOUSE_EMAIL", "Jose@mosshomeusa.com");
+  return env("FABRIC_WAREHOUSE_EMAIL", "josediaz@mosshomeusa.com");
 }
 
 /** Weeks added to a mill's quoted lead time before telling the customer. */

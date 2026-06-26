@@ -95,3 +95,31 @@ export function isSkippableSender(from: string): boolean {
 export function extractEmailAddress(from: string): string {
   return (from.match(/<([^>]+)>/)?.[1] ?? from).trim().toLowerCase();
 }
+
+/**
+ * Append the original message as a quoted block, Gmail-reply style, so the
+ * customer sees the conversation history inside our reply. The n8n Gmail
+ * "reply" operation threads the message but does NOT quote the original, so we
+ * build the quote here.
+ */
+export function quoteOriginalMessage(
+  replyText: string,
+  original: { from?: string; date?: string; body?: string }
+): string {
+  const body = (original.body ?? "").replace(/\r\n/g, "\n").trimEnd();
+  if (!body) return replyText;
+
+  // Keep the quote reasonable — long threads don't need to be re-quoted in full.
+  const capped = body.length > 4000 ? `${body.slice(0, 4000)}\n…` : body;
+
+  const who = (original.from ?? "").trim() || "the sender";
+  const attribution = original.date
+    ? `On ${original.date}, ${who} wrote:`
+    : `${who} wrote:`;
+  const quoted = capped
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
+
+  return `${replyText.trimEnd()}\n\n${attribution}\n${quoted}`;
+}

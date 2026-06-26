@@ -72,7 +72,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ messageId: $('Gmail Trigger (Moss CS Inbox)').item.json.id, threadId: $('Gmail Trigger (Moss CS Inbox)').item.json.threadId, from: $('Gmail Trigger (Moss CS Inbox)').item.json.from?.value?.[0]?.address ?? $('Gmail Trigger (Moss CS Inbox)').item.json.From, to: $('Gmail Trigger (Moss CS Inbox)').item.json.to?.value?.[0]?.address ?? $('Gmail Trigger (Moss CS Inbox)').item.json.To, subject: $('Gmail Trigger (Moss CS Inbox)').item.json.subject ?? $('Gmail Trigger (Moss CS Inbox)').item.json.Subject ?? '', textBody: $('Gmail Trigger (Moss CS Inbox)').item.json.text ?? $('Gmail Trigger (Moss CS Inbox)').item.json.snippet ?? '', htmlBody: $('Gmail Trigger (Moss CS Inbox)').item.json.html ?? '' }) }}",
+        "jsonBody": "={{ JSON.stringify({ messageId: $('Gmail Trigger (Moss CS Inbox)').item.json.id, threadId: $('Gmail Trigger (Moss CS Inbox)').item.json.threadId, from: $('Gmail Trigger (Moss CS Inbox)').item.json.from?.value?.[0]?.address ?? $('Gmail Trigger (Moss CS Inbox)').item.json.From, to: $('Gmail Trigger (Moss CS Inbox)').item.json.to?.value?.[0]?.address ?? $('Gmail Trigger (Moss CS Inbox)').item.json.To, subject: $('Gmail Trigger (Moss CS Inbox)').item.json.subject ?? $('Gmail Trigger (Moss CS Inbox)').item.json.Subject ?? '', date: $('Gmail Trigger (Moss CS Inbox)').item.json.date ?? $('Gmail Trigger (Moss CS Inbox)').item.json.Date ?? '', textBody: $('Gmail Trigger (Moss CS Inbox)').item.json.text ?? $('Gmail Trigger (Moss CS Inbox)').item.json.snippet ?? '', htmlBody: $('Gmail Trigger (Moss CS Inbox)').item.json.html ?? '' }) }}",
         "options": {
           "timeout": 60000
         }
