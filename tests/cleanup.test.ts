@@ -62,6 +62,37 @@ describe("extractEmailAddress", () => {
   });
 });
 
+describe("quoteOriginalMessage — thread inclusion", () => {
+  it("appends the original message as a Gmail-style quote with attribution", () => {
+    const out = quoteOriginalMessage("Thanks for reaching out!", {
+      from: "Marie <marie@cocoon-atx.com>",
+      date: "Wed, 18 Jun 2026 09:00:00 -0700",
+      body: "Hi,\nWhat's the status of order 032725-5713?",
+    });
+    expect(out).toContain("Thanks for reaching out!");
+    expect(out).toContain(
+      "On Wed, 18 Jun 2026 09:00:00 -0700, Marie <marie@cocoon-atx.com> wrote:"
+    );
+    expect(out).toContain("> Hi,");
+    expect(out).toContain("> What's the status of order 032725-5713?");
+  });
+
+  it("falls back to a dateless attribution", () => {
+    const out = quoteOriginalMessage("Reply body", {
+      from: "Bob <bob@x.com>",
+      body: "original",
+    });
+    expect(out).toContain("Bob <bob@x.com> wrote:");
+    expect(out).toContain("> original");
+  });
+
+  it("returns the reply unchanged when there is no original body", () => {
+    expect(quoteOriginalMessage("Just the reply", { from: "x", body: "" })).toBe(
+      "Just the reply"
+    );
+  });
+});
+
 describe("lintReply — forbidden wording", () => {
   it("rejects 'scheduled to ship'", () => {
     expect(lintReply("Your order is scheduled to ship on July 10th.")).toMatch(
