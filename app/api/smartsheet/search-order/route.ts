@@ -58,6 +58,7 @@ export async function GET(req: NextRequest) {
     senderCompany: q.get("company"),
     fabricRequests: [],
     furnitureItem: null,
+    comShipmentClaimed: false,
     secondaryQuestions: [],
     summary: "manual diagnostic lookup",
     unsafeSignals: {
