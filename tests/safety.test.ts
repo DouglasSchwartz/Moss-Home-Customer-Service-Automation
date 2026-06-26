@@ -1,0 +1,304 @@
+import { describe, expect, it } from "vitest";
+import { lookupOrder } from "../lib/matching";
+import { decideReplyMode } from "../lib/safety";
+import type { ExtractionResult } from "../lib/types";
+import { MOCK_ROWS } from "./fixtures/emails";
+
+function extraction(over: Partial<ExtractionResult>): ExtractionResult {
+  return {
+    intent: "order_status",
+    ampOrderNumber: null,
+    poNumber: null,
+    invoiceNumber: null,
+    clientName: null,
+    projectName: null,
+    customerEmail: null,
+    materialOrComReference: null,
+    senderName: null,
+    senderCompany: null,
+    fabricRequests: [],
+    furnitureItem: null,
+    secondaryQuestions: [],
+    summary: "",
+    unsafeSignals: {
+      complaint: false,
+      damage: false,
+      returnOrRefund: false,
+      cancellation: false,
+      addressChange: false,
+      legalOrChargeback: false,
+      angryOrEscalated: false,
+    },
+    ...over,
+  };
+}
+
+function lookup(e: ExtractionResult, email: string | null = null) {
+  return lookupOrder(MOCK_ROWS, e, email);
+}
+
+describe("decideReplyMode — v1 safety gate", () => {
+  it("auto-replies on clean WISMO with exact AMP match + Estimated Shipping", () => {
+    const e = extraction({ ampOrderNumber: "032725-5713" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.useShippedLanguage).toBe(false);
+  });
+
+  it("treats multiple rows of the SAME order as line items, not ambiguity", () => {
+    const e = extraction({ ampOrderNumber: "032725-5713" });
+    const l = lookup(e);
+    expect(l.multipleMatches).toBe(false);
+    expect(l.rows?.length).toBe(2);
+    const d = decideReplyMode(e, l);
+    expect(d.reply_mode).toBe("auto_reply");
+  });
+
+  it("diverts to human when the estimated ship date is in the past", () => {
+    const e = extraction({ ampOrderNumber: "999000-1234" });
+    const l: import("../lib/types").LookupResult = {
+      found: true,
+      matchType: "amp_order",
+      matchedKey: "999000-1234",
+      matchedColumn: "AMP Order #",
+      confidence: "high",
+      multipleMatches: false,
+      candidateCount: 1,
+      rows: [
+        {
+          rowId: "p1",
+          cells: {
+            "AMP Order #": "999000-1234",
+            "Order Status": "2. Ready to Produce",
+            "Estimated Shipping": "Early March",
+            "Est Ship Week": "2026-03-06",
+          },
+        },
+      ],
+    };
+    const d = decideReplyMode(e, l, new Date("2026-06-18"));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.reason).toMatch(/past/i);
+  });
+
+  it("auto-replies when the estimated ship date is in the future", () => {
+    const e = extraction({ ampOrderNumber: "999000-5678" });
+    const l: import("../lib/types").LookupResult = {
+      found: true,
+      matchType: "amp_order",
+      matchedKey: "999000-5678",
+      matchedColumn: "AMP Order #",
+      confidence: "high",
+      multipleMatches: false,
+      candidateCount: 1,
+      rows: [
+        {
+          rowId: "f1",
+          cells: {
+            "AMP Order #": "999000-5678",
+            "Order Status": "2. Ready to Produce",
+            "Estimated Shipping": "Early September",
+            "Est Ship Week": "2026-09-04",
+          },
+        },
+      ],
+    };
+    const d = decideReplyMode(e, l, new Date("2026-06-18"));
+    expect(d.reply_mode).toBe("auto_reply");
+  });
+
+  it("does not divert on yearless fuzzy estimates (cannot prove past)", () => {
+    const e = extraction({ ampOrderNumber: "032725-5713" });
+    const d = decideReplyMode(e, lookup(e), new Date("2030-01-01"));
+    expect(d.reply_mode).toBe("auto_reply");
+  });
+
+  it("auto-replies with shipped language when tracking exists", () => {
+    const e = extraction({ intent: "tracking_status", ampOrderNumber: "112025-23759" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.useShippedLanguage).toBe(true);
+  });
+
+  it("auto-replies when multiple orders match but same customer + all tracked", () => {
+    const e = extraction({ intent: "tracking_status", poNumber: "7776" });
+    const multi = {
+      found: true,
+      matchType: "customer_po" as const,
+      matchedKey: "7776",
+      matchedColumn: "Customer PO #",
+      confidence: "medium" as const,
+      multipleMatches: true,
+      candidateCount: 2,
+      rows: [
+        {
+          rowId: "x1",
+          cells: {
+            "AMP Order #": "021126-3721",
+            "Customer PO #": "7776/MJT",
+            Customer: "BOHLERT MASSEY INTERIORS",
+            "Tracking #": "935697",
+          },
+        },
+        {
+          rowId: "x2",
+          cells: {
+            "AMP Order #": "021126-3722",
+            "Customer PO #": "7776/SHOWROOM",
+            Customer: "BOHLERT MASSEY INTERIORS",
+            "Tracking #": "945518",
+          },
+        },
+      ],
+    };
+    const d = decideReplyMode(e, multi);
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.useShippedLanguage).toBe(true);
+  });
+
+  it("still holds multiple orders when customers differ or tracking missing", () => {
+    const e = extraction({ intent: "tracking_status", poNumber: "7776" });
+    const multi: import("../lib/types").LookupResult = {
+      found: true,
+      matchType: "customer_po" as const,
+      matchedKey: "7776",
+      matchedColumn: "Customer PO #",
+      confidence: "medium" as const,
+      multipleMatches: true,
+      candidateCount: 2,
+      rows: [
+        {
+          rowId: "x1",
+          cells: {
+            "AMP Order #": "021126-3721",
+            Customer: "BOHLERT MASSEY INTERIORS",
+            "Tracking #": "935697",
+          },
+        },
+        {
+          rowId: "x2",
+          cells: { "AMP Order #": "021126-3722", Customer: "OTHER STUDIO" },
+        },
+      ],
+    };
+    const d = decideReplyMode(e, multi);
+    expect(d.reply_mode).toBe("human_review");
+  });
+
+  it("withholds when shipped but tracking is missing", () => {
+    const e = extraction({ intent: "tracking_status", ampOrderNumber: "112525-3604" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.reason).toMatch(/tracking is missing/i);
+  });
+
+  it("withholds on Pending Materials status", () => {
+    const e = extraction({ ampOrderNumber: "030926-23631" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.reason).toMatch(/pending materials/i);
+  });
+
+  it("withholds on cancelled orders", () => {
+    const e = extraction({ ampOrderNumber: "100825-4583" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.reason).toMatch(/cancelled/i);
+  });
+
+  it("withholds when Estimated Shipping is empty (#INVALID cleaned away)", () => {
+    const e = extraction({ ampOrderNumber: "101725-3135" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.reason).toMatch(/estimated shipping is empty/i);
+  });
+
+  it("auto-replies to COM received questions using Fabric Location / Pending Materials", () => {
+    const e = extraction({ intent: "com_received_status", ampOrderNumber: "030926-23631" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.comMode).toBe(true);
+    expect(d.reason).toMatch(/awaiting fabric/i);
+  });
+
+  it("auto-replies on a client-name match that resolves to a single clean order", () => {
+    const e = extraction({ intent: "client_project_lookup", clientName: "Cocoon" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("auto_reply");
+  });
+
+  it("still holds client-name matches when the order itself is not clean", () => {
+    // "Las Brisas" resolves to one order, but it's pending materials.
+    const e = extraction({ intent: "client_project_lookup", clientName: "Las Brisas" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.reason).toMatch(/pending materials/i);
+  });
+
+  it("routes unsafe signals to human review before anything else", () => {
+    const e = extraction({
+      intent: "damage_or_complaint",
+      ampOrderNumber: "112025-23759",
+      unsafeSignals: {
+        complaint: true,
+        damage: true,
+        returnOrRefund: true,
+        cancellation: false,
+        addressChange: false,
+        legalOrChargeback: false,
+        angryOrEscalated: false,
+      },
+    });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.reason).toMatch(/unsafe signal/i);
+  });
+
+  it("routes multiple matches to human review", () => {
+    const e = extraction({});
+    const d = decideReplyMode(e, lookup(e, "interiors@upstatedown.com"));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.reason).toMatch(/multiple/i);
+  });
+
+  it("auto-replies asking the customer to verify an identifier that matched nothing", () => {
+    const e = extraction({ ampOrderNumber: "999999-9999" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.askForInfo).toBe(true);
+    expect(d.reason).toMatch(/not found in current open orders/i);
+  });
+
+  it("auto-replies asking for an order number when nothing was provided", () => {
+    const e = extraction({ clientName: "Nonexistent Client LLC" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("auto_reply");
+    expect(d.askForInfo).toBe(true);
+  });
+
+  it("ignores spam", () => {
+    const e = extraction({ intent: "spam_or_unrelated" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("ignore");
+  });
+
+  it("ignores acknowledgments (thank-you / got it) without replying", () => {
+    const e = extraction({ intent: "acknowledgment" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("ignore");
+    expect(d.askForInfo).toBe(false);
+  });
+
+  it("ignores non-customer-service requests (e.g. website edits)", () => {
+    const e = extraction({ intent: "not_customer_service" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("ignore");
+  });
+
+  it("does NOT robo-ask for an order number on general chatter", () => {
+    const e = extraction({ intent: "general_customer_service" });
+    const d = decideReplyMode(e, lookup(e));
+    expect(d.reply_mode).toBe("human_review");
+    expect(d.askForInfo).toBe(false);
+  });
+});
